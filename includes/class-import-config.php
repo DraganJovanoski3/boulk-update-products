@@ -12,14 +12,15 @@ defined( 'ABSPATH' ) || exit;
  */
 class Boulk_UP_Import_Config {
 
+	const PROFILE_QUICK    = 'quick';
 	const PROFILE_STANDARD = 'standard';
 	const PROFILE_LARGE    = 'large';
 	const PROFILE_MAX      = 'max';
 
 	/**
-	 * Default profile for new imports (optimized for ~10k rows per run).
+	 * Default profile when row count is unknown.
 	 */
-	const DEFAULT_PROFILE = self::PROFILE_LARGE;
+	const DEFAULT_PROFILE = self::PROFILE_QUICK;
 
 	/**
 	 * Get profile definitions.
@@ -28,30 +29,66 @@ class Boulk_UP_Import_Config {
 	 */
 	public static function get_profiles() {
 		$profiles = array(
-			self::PROFILE_STANDARD => array(
+			self::PROFILE_QUICK => array(
 				'batch_size'     => 100,
-				'time_limit'     => 20,
-				'schedule_delay' => 2,
-				'label'          => __( 'Standard (up to ~2,000 rows)', 'boulk-update-products' ),
-				'description'    => __( 'Lighter server load, slower for very large files.', 'boulk-update-products' ),
+				'time_limit'     => 60,
+				'schedule_delay' => 0,
+				'label'          => __( 'Quick (under ~1,000 rows)', 'boulk-update-products' ),
+				'description'    => __( 'Best for small/medium files. Finishes in one or few runs.', 'boulk-update-products' ),
 			),
-			self::PROFILE_LARGE => array(
-				'batch_size'     => 200,
+			self::PROFILE_STANDARD => array(
+				'batch_size'     => 150,
 				'time_limit'     => 45,
 				'schedule_delay' => 0,
-				'label'          => __( 'Large (up to ~10,000 rows)', 'boulk-update-products' ),
-				'description'    => __( 'Recommended for monthly bulk updates (~10k products).', 'boulk-update-products' ),
+				'label'          => __( 'Standard (up to ~5,000 rows)', 'boulk-update-products' ),
+				'description'    => __( 'Balanced speed for medium catalogs.', 'boulk-update-products' ),
 			),
-			self::PROFILE_MAX => array(
+			self::PROFILE_LARGE => array(
 				'batch_size'     => 250,
 				'time_limit'     => 90,
 				'schedule_delay' => 0,
+				'label'          => __( 'Large (up to ~10,000 rows)', 'boulk-update-products' ),
+				'description'    => __( 'For large monthly updates.', 'boulk-update-products' ),
+			),
+			self::PROFILE_MAX => array(
+				'batch_size'     => 300,
+				'time_limit'     => 120,
+				'schedule_delay' => 0,
 				'label'          => __( 'Maximum (50,000+ rows)', 'boulk-update-products' ),
-				'description'    => __( 'Longest run per tick; use on powerful hosting during low traffic.', 'boulk-update-products' ),
+				'description'    => __( 'Longest run per tick; use during low traffic.', 'boulk-update-products' ),
 			),
 		);
 
 		return apply_filters( 'boulk_up_import_profiles', $profiles );
+	}
+
+	/**
+	 * Pick a sensible profile from row count when user leaves default.
+	 *
+	 * @param int    $total_rows Row count.
+	 * @param string $profile    User-selected profile.
+	 * @return string
+	 */
+	public static function auto_profile( $total_rows, $profile ) {
+		$profile = self::sanitize_profile( $profile );
+
+		if ( $total_rows <= 500 ) {
+			return self::PROFILE_QUICK;
+		}
+		if ( $total_rows <= 2000 && in_array( $profile, array( self::PROFILE_LARGE, self::PROFILE_MAX ), true ) ) {
+			return self::PROFILE_STANDARD;
+		}
+
+		return $profile;
+	}
+
+	/**
+	 * Rows at or below this count are processed immediately on upload.
+	 *
+	 * @return int
+	 */
+	public static function get_inline_threshold() {
+		return (int) apply_filters( 'boulk_up_inline_threshold', 500 );
 	}
 
 	/**
@@ -101,7 +138,7 @@ class Boulk_UP_Import_Config {
 		$settings = self::get_job_settings( $job );
 		$limit    = (int) $settings['time_limit'];
 
-		return max( 10, (int) apply_filters( 'boulk_up_batch_time_limit', $limit, $job ) );
+		return max( 15, (int) apply_filters( 'boulk_up_batch_time_limit', $limit, $job ) );
 	}
 
 	/**
@@ -115,6 +152,15 @@ class Boulk_UP_Import_Config {
 		$delay    = (int) $settings['schedule_delay'];
 
 		return max( 0, (int) apply_filters( 'boulk_up_schedule_delay', $delay, $job ) );
+	}
+
+	/**
+	 * Max extra ticks to run back-to-back in one HTTP request.
+	 *
+	 * @return int
+	 */
+	public static function get_chain_ticks() {
+		return max( 1, (int) apply_filters( 'boulk_up_chain_ticks', 8 ) );
 	}
 
 	/**

@@ -130,6 +130,71 @@ class Boulk_UP_CSV_Parser {
 	}
 
 	/**
+	 * Load parser state from a saved import job (skips full file scan).
+	 *
+	 * @param array<string, int> $column_map Column index map.
+	 * @param string             $delimiter  CSV delimiter.
+	 * @param int                $total_rows Known row total.
+	 */
+	public function load_state( $column_map, $delimiter, $total_rows = 0 ) {
+		$this->column_map = $column_map;
+		$this->delimiter  = $delimiter;
+		$this->total_rows = (int) $total_rows;
+	}
+
+	/**
+	 * Read the next chunk of rows using a byte offset (fast resume).
+	 *
+	 * @param int $file_offset   Byte position in file (0 = after header).
+	 * @param int $row_index     Current 0-based data row index.
+	 * @param int $limit         Max rows to read.
+	 * @return array{rows: array<int, array<string, string>>, next_offset: int, next_row_index: int}
+	 */
+	public function read_chunk( $file_offset, $row_index, $limit ) {
+		$rows      = array();
+		$handle    = fopen( $this->file_path, 'rb' );
+		$next_index = $row_index;
+
+		if ( ! $handle ) {
+			return array(
+				'rows'           => $rows,
+				'next_offset'    => $file_offset,
+				'next_row_index' => $row_index,
+			);
+		}
+
+		if ( 0 === $file_offset ) {
+			$bom = fread( $handle, 3 );
+			if ( "\xEF\xBB\xBF" !== $bom ) {
+				rewind( $handle );
+			}
+			fgetcsv( $handle, 0, $this->delimiter );
+		} else {
+			fseek( $handle, $file_offset );
+		}
+
+		$fetched = 0;
+		while ( ( $data = fgetcsv( $handle, 0, $this->delimiter ) ) !== false && $fetched < $limit ) {
+			if ( $this->is_empty_row( $data ) ) {
+				continue;
+			}
+
+			$rows[ $next_index ] = $this->map_row( $data );
+			++$next_index;
+			++$fetched;
+		}
+
+		$next_offset = ftell( $handle );
+		fclose( $handle );
+
+		return array(
+			'rows'           => $rows,
+			'next_offset'    => (int) $next_offset,
+			'next_row_index' => $next_index,
+		);
+	}
+
+	/**
 	 * Get total data row count.
 	 *
 	 * @return int

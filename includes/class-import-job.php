@@ -85,17 +85,24 @@ class Boulk_UP_Import_Job {
 			);
 		}
 
+		$total_rows = $parser->get_total_rows();
+		$profile    = Boulk_UP_Import_Config::auto_profile( $total_rows, $profile );
+
 		$job = new self(
 			$id,
 			array(
-				'id'            => $id,
-				'status'        => self::STATUS_QUEUED,
-				'dry_run'       => (bool) $dry_run,
-				'profile'       => $profile,
+				'id'             => $id,
+				'status'         => self::STATUS_QUEUED,
+				'dry_run'        => (bool) $dry_run,
+				'profile'        => $profile,
 				'update_fields'  => $update_fields,
 				'create_missing' => (bool) $create_missing,
 				'file_path'      => $dest,
-				'total_rows'     => $parser->get_total_rows(),
+				'csv_column_map' => $parser->get_column_map(),
+				'csv_delimiter'  => $parser->get_delimiter(),
+				'file_offset'    => 0,
+				'row_index'      => 0,
+				'total_rows'     => $total_rows,
 				'processed'      => 0,
 				'updated'        => 0,
 				'created'        => 0,
@@ -282,10 +289,17 @@ class Boulk_UP_Import_Job {
 			$this->append_issue_cache( 'skipped_entries', $entry );
 		}
 
+		// Successful updates are counted only — skip disk writes for speed.
+		if ( 'updated' === $status ) {
+			return;
+		}
+
 		$this->append_log_file( $row_number, $sku, $status, $message );
 
-		if ( in_array( $status, array( 'error', 'skipped' ), true ) ) {
-			$this->append_status_log_file( $status, $row_number, $sku, $message );
+		if ( in_array( $status, array( 'error', 'skipped', 'created' ), true ) ) {
+			if ( in_array( $status, array( 'error', 'skipped' ), true ) ) {
+				$this->append_status_log_file( $status, $row_number, $sku, $message );
+			}
 		}
 	}
 

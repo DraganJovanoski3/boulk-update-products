@@ -269,14 +269,15 @@ class Boulk_UP_Admin {
 						</td>
 					</tr>
 					<tr>
-						<th scope="row"><?php esc_html_e( 'New products', 'boulk-update-products' ); ?></th>
+						<th scope="row"><?php esc_html_e( 'SKU rules', 'boulk-update-products' ); ?></th>
 						<td>
-							<label>
-								<input type="checkbox" name="boulk_create_missing" value="1" />
-								<?php esc_html_e( 'Create new WooCommerce products when SKU / Automann part number is not found', 'boulk-update-products' ); ?>
-							</label>
+							<ul class="boulk-sku-rules">
+								<li><?php esc_html_e( 'Empty sku cell → error (row skipped, nothing created).', 'boulk-update-products' ); ?></li>
+								<li><?php esc_html_e( 'sku exists in WooCommerce → update that product.', 'boulk-update-products' ); ?></li>
+								<li><?php esc_html_e( 'sku in CSV but not in store → create a new simple product.', 'boulk-update-products' ); ?></li>
+							</ul>
 							<p class="description">
-								<?php esc_html_e( 'Uses the sku column first, then Automann Part Number. New products are published as simple products.', 'boulk-update-products' ); ?>
+								<?php esc_html_e( 'Only the sku column is used to match products. Automann Part Number is optional meta, not a substitute for sku.', 'boulk-update-products' ); ?>
 							</p>
 						</td>
 					</tr>
@@ -465,8 +466,8 @@ class Boulk_UP_Admin {
 	 */
 	private function get_column_docs() {
 		return array(
-			array( 'column' => 'sku', 'aliases' => '—', 'description' => __( 'WooCommerce SKU (used first to find products).', 'boulk-update-products' ) ),
-			array( 'column' => 'Automann Part Number', 'aliases' => '—', 'description' => __( 'Used as SKU if sku column is empty; also saved as product meta.', 'boulk-update-products' ) ),
+			array( 'column' => 'sku', 'aliases' => '—', 'description' => __( 'Required on every row. Matches WooCommerce products; creates new product if not found.', 'boulk-update-products' ) ),
+			array( 'column' => 'Automann Part Number', 'aliases' => '—', 'description' => __( 'Optional. Saved as product meta only (does not replace sku).', 'boulk-update-products' ) ),
 			array( 'column' => 'Description', 'aliases' => '—', 'description' => __( 'Product description (and product name when creating new products).', 'boulk-update-products' ) ),
 			array( 'column' => 'Updated Price', 'aliases' => '—', 'description' => __( 'Selling price (WooCommerce regular price).', 'boulk-update-products' ) ),
 			array( 'column' => 'Dist. Net Price', 'aliases' => '—', 'description' => __( 'Maps to WooCommerce sale price.', 'boulk-update-products' ) ),
@@ -517,9 +518,7 @@ class Boulk_UP_Admin {
 				<li><strong><?php esc_html_e( 'Skipped:', 'boulk-update-products' ); ?></strong> <span class="boulk-stat-skipped"><?php echo esc_html( (string) $job->get( 'skipped', 0 ) ); ?></span></li>
 				<li><strong><?php esc_html_e( 'Errors:', 'boulk-update-products' ); ?></strong> <span class="boulk-stat-errors"><?php echo esc_html( (string) $job->get( 'errors', 0 ) ); ?></span></li>
 			</ul>
-			<?php if ( $job->get( 'create_missing' ) ) : ?>
-				<p class="description"><?php esc_html_e( 'This import can create new products for missing SKUs.', 'boulk-update-products' ); ?></p>
-			<?php endif; ?>
+			<p class="description"><?php esc_html_e( 'New products are created automatically when a sku is in the CSV but not in WooCommerce.', 'boulk-update-products' ); ?></p>
 
 			<p class="boulk-log-downloads">
 				<?php if ( (int) $job->get( 'errors', 0 ) > 0 ) : ?>
@@ -740,9 +739,7 @@ class Boulk_UP_Admin {
 			? array_map( 'sanitize_key', wp_unslash( $_POST['boulk_update_fields'] ) )
 			: array();
 
-		$create_missing = ! empty( $_POST['boulk_create_missing'] );
-
-		$job = Boulk_UP_Import_Job::create( $file['tmp_name'], $dry_run, $profile, $update_fields, $create_missing );
+		$job = Boulk_UP_Import_Job::create( $file['tmp_name'], $dry_run, $profile, $update_fields, true );
 		if ( is_wp_error( $job ) ) {
 			$this->redirect_with_notice( 'error', $job->get_error_message() );
 		}
@@ -758,7 +755,7 @@ class Boulk_UP_Admin {
 					'boulk_notice' => 'success',
 					'boulk_message' => $dry_run
 						? __( 'Dry run started. No changes will be saved.', 'boulk-update-products' )
-						: __( 'Import started. Processing in background.', 'boulk-update-products' ),
+						: __( 'Import started. Small files run immediately; large files continue in the background.', 'boulk-update-products' ),
 				),
 				admin_url( 'admin.php' )
 			)

@@ -202,6 +202,15 @@
 	color: #646970;
 }
 
+.boulk-sku-rules {
+	margin: 0 0 8px 18px;
+	list-style: disc;
+}
+
+.boulk-sku-rules li {
+	margin-bottom: 4px;
+}
+
 .boulk-field-presets {
 	margin: 0 0 12px;
 	display: flex;

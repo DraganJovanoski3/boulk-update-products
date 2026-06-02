@@ -27,22 +27,50 @@ class Boulk_UP_Product_Updater {
 	private $enabled_fields;
 
 	/**
-	 * Create simple products when SKU is not found.
+	 * SKU => product ID cache for this batch.
 	 *
-	 * @var bool
+	 * @var array<string, int>
 	 */
-	private $create_missing;
+	private $sku_cache = array();
 
 	/**
 	 * Constructor.
 	 *
 	 * @param string[]|null $enabled_fields Fields to update; null = all.
-	 * @param bool          $create_missing Create new products for unknown SKUs.
 	 */
-	public function __construct( $enabled_fields = null, $create_missing = false ) {
+	public function __construct( $enabled_fields = null ) {
 		$this->enabled_fields = $enabled_fields;
-		$this->create_missing = (bool) $create_missing;
-		$this->yoast          = new Boulk_UP_Yoast_Updater( $enabled_fields );
+		$this->yoast          = $this->needs_yoast() ? new Boulk_UP_Yoast_Updater( $enabled_fields ) : null;
+	}
+
+	/**
+	 * Whether Yoast updates are needed for this import.
+	 *
+	 * @return bool
+	 */
+	private function needs_yoast() {
+		if ( null === $this->enabled_fields ) {
+			return true;
+		}
+		$seo_fields = array( 'seo_title', 'meta_description', 'focus_keyphrase', 'meta_keywords' );
+		return (bool) array_intersect( $seo_fields, $this->enabled_fields );
+	}
+
+	/**
+	 * Resolve product ID by SKU with in-memory cache.
+	 *
+	 * @param string $sku SKU.
+	 * @return int
+	 */
+	private function get_product_id_by_sku( $sku ) {
+		if ( isset( $this->sku_cache[ $sku ] ) ) {
+			return $this->sku_cache[ $sku ];
+		}
+
+		$id = wc_get_product_id_by_sku( $sku );
+		$this->sku_cache[ $sku ] = $id ? (int) $id : 0;
+
+		return $this->sku_cache[ $sku ];
 	}
 
 	/**
@@ -51,7 +79,7 @@ class Boulk_UP_Product_Updater {
 	 * @param array<string, string> $row        Mapped row data.
 	 * @param int                   $row_number Display row number for logs.
 	 * @param bool                  $dry_run    If true, no DB writes.
-	 * @return array{status: string, message: string}
+	 * @return array{status: string, message: string, product_id?: int}
 	 */
 	public function process_row( $row, $row_number, $dry_run = false ) {
 		$sku = Boulk_UP_Update_Fields::resolve_sku( $row );
@@ -59,7 +87,7 @@ class Boulk_UP_Product_Updater {
 		if ( '' === $sku ) {
 			return array(
 				'status'  => 'error',
-				'message' => __( 'Missing SKU and Automann part number.', 'boulk-update-products' ),
+				'message' => __( 'Missing SKU in CSV row — product was not created or updated.', 'boulk-update-products' ),
 			);
 		}
 
@@ -67,17 +95,10 @@ class Boulk_UP_Product_Updater {
 		$row        = Boulk_UP_Update_Fields::filter_row( $row, $this->enabled_fields );
 		$row['sku'] = $sku;
 
-		$product_id = wc_get_product_id_by_sku( $sku );
+		$product_id = $this->get_product_id_by_sku( $sku );
 		$is_new     = false;
 
 		if ( ! $product_id ) {
-			if ( ! $this->create_missing ) {
-				return array(
-					'status'  => 'skipped',
-					'message' => __( 'No product found with this SKU. Enable "Create new products" to add it.', 'boulk-update-products' ),
-				);
-			}
-
 			if ( $dry_run ) {
 				return array(
 					'status'  => 'created',
@@ -126,7 +147,7 @@ class Boulk_UP_Product_Updater {
 				$changed = true;
 			}
 
-			if ( $this->yoast->update( $post_id, $row ) ) {
+			if ( $this->yoast && $this->yoast->update( $post_id, $row ) ) {
 				$changed = true;
 			}
 
@@ -150,8 +171,6 @@ class Boulk_UP_Product_Updater {
 				$changed = true;
 			}
 
-			wc_delete_product_transients( $post_id );
-
 			if ( ! $changed ) {
 				return array(
 					'status'  => 'skipped',
@@ -170,8 +189,9 @@ class Boulk_UP_Product_Updater {
 			}
 
 			return array(
-				'status'  => $is_new ? 'created' : 'updated',
-				'message' => $message,
+				'status'     => $is_new ? 'created' : 'updated',
+				'message'    => $message,
+				'product_id' => $post_id,
 			);
 		} catch ( Exception $e ) {
 			return array(

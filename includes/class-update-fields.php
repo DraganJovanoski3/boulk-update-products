@@ -17,7 +17,7 @@ class Boulk_UP_Update_Fields {
 	 *
 	 * @var string[]
 	 */
-	public static $lookup_fields = array( 'sku', 'automann_part_number' );
+	public static $lookup_fields = array( 'sku' );
 
 	/**
 	 * Field groups and labels for the admin UI.
@@ -258,18 +258,15 @@ class Boulk_UP_Update_Fields {
 	}
 
 	/**
-	 * Resolve WooCommerce SKU from row (sku column, then Automann part number).
+	 * Resolve WooCommerce SKU from the sku column only.
 	 *
 	 * @param array<string, string> $row Row data.
 	 * @return string
 	 */
 	public static function resolve_sku( $row ) {
-		if ( ! empty( $row['sku'] ) ) {
-			return trim( $row['sku'] );
+		if ( ! isset( $row['sku'] ) ) {
+			return '';
 		}
-		if ( ! empty( $row['automann_part_number'] ) ) {
-			return trim( $row['automann_part_number'] );
-		}
-		return '';
+		return trim( (string) $row['sku'] );
 	}
 }
