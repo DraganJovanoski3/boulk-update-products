@@ -48,6 +48,11 @@ class Boulk_UP_Admin {
 		add_action( 'admin_post_boulk_up_download_automann_sample', array( $this, 'handle_download_automann_sample' ) );
 		add_action( 'admin_post_boulk_up_download_log', array( $this, 'handle_download_log' ) );
 		add_action( 'wp_ajax_boulk_up_job_status', array( $this, 'ajax_job_status' ) );
+		add_action( 'wp_ajax_boulk_up_products_list', array( $this, 'ajax_products_list' ) );
+		add_action( 'wp_ajax_boulk_up_products_select_all_ids', array( $this, 'ajax_products_select_all_ids' ) );
+		add_action( 'wp_ajax_boulk_up_products_bulk_update', array( $this, 'ajax_products_bulk_update' ) );
+		add_action( 'wp_ajax_boulk_up_products_bulk_delete', array( $this, 'ajax_products_bulk_delete' ) );
+		add_action( 'wp_ajax_boulk_up_bulk_action_status', array( $this, 'ajax_bulk_action_status' ) );
 	}
 
 	/**
@@ -74,6 +79,8 @@ class Boulk_UP_Admin {
 			return;
 		}
 
+		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'import';
+
 		wp_enqueue_style(
 			'boulk-up-admin',
 			BOULK_UP_PLUGIN_URL . 'assets/admin.css',
@@ -93,10 +100,10 @@ class Boulk_UP_Admin {
 			'boulk-up-admin',
 			'boulkUpAdmin',
 			array(
-				'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
-				'nonce'    => wp_create_nonce( 'boulk_up_job_status' ),
+				'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
+				'nonce'        => wp_create_nonce( 'boulk_up_job_status' ),
 				'pollInterval' => 3000,
-				'i18n'     => array(
+				'i18n'         => array(
 					'processing' => __( 'Processing…', 'boulk-update-products' ),
 					'complete'   => __( 'Complete', 'boulk-update-products' ),
 					'failed'     => __( 'Failed', 'boulk-update-products' ),
@@ -104,6 +111,56 @@ class Boulk_UP_Admin {
 				),
 			)
 		);
+
+		if ( 'products' === $tab ) {
+			wp_enqueue_style(
+				'boulk-up-product-manager',
+				BOULK_UP_PLUGIN_URL . 'assets/product-manager.css',
+				array( 'boulk-up-admin' ),
+				BOULK_UP_VERSION
+			);
+
+			wp_enqueue_script(
+				'boulk-up-product-manager',
+				BOULK_UP_PLUGIN_URL . 'assets/product-manager.js',
+				array( 'jquery' ),
+				BOULK_UP_VERSION,
+				true
+			);
+
+			wp_localize_script(
+				'boulk-up-product-manager',
+				'boulkUpProducts',
+				array(
+					'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
+					'nonce'         => wp_create_nonce( 'boulk_up_products' ),
+					'pollInterval'  => 2000,
+					'syncThreshold' => Boulk_UP_Product_Manager::SYNC_THRESHOLD,
+					'deleteBatch'   => Boulk_UP_Product_Manager::SYNC_BATCH,
+					'perPageOptions' => Boulk_UP_Product_Manager::PER_PAGE_OPTIONS,
+					'i18n'          => array(
+						'loading'           => __( 'Loading products…', 'boulk-update-products' ),
+						'loadError'         => __( 'Could not load products.', 'boulk-update-products' ),
+						'noProducts'        => __( 'No products found.', 'boulk-update-products' ),
+						'showing'           => __( 'Showing %1$s–%2$s of %3$s products', 'boulk-update-products' ),
+						'selected'          => __( '%d selected', 'boulk-update-products' ),
+						'selectPage'        => __( 'Select all on page', 'boulk-update-products' ),
+						'selectAllMatching' => __( 'Select all matching', 'boulk-update-products' ),
+						'clearSelection'    => __( 'Clear selection', 'boulk-update-products' ),
+						'loadNextChunk'     => __( 'Load next chunk', 'boulk-update-products' ),
+						'cappedNotice'      => __( 'Showing first 10,000 — use search or bulk actions on all matching.', 'boulk-update-products' ),
+						'confirmDelete'     => __( 'Move selected products to trash? They can be restored from the WooCommerce trash.', 'boulk-update-products' ),
+						'deleteDone'        => __( 'Moved %1$d products to trash (%2$d failed).', 'boulk-update-products' ),
+						'updateDone'        => __( 'Updated %1$d products (%2$d failed).', 'boulk-update-products' ),
+						'processing'        => __( 'Processing…', 'boulk-update-products' ),
+						'complete'          => __( 'Complete', 'boulk-update-products' ),
+						'failed'            => __( 'Failed', 'boulk-update-products' ),
+						'noSelection'       => __( 'Select at least one product.', 'boulk-update-products' ),
+						'selectingAll'      => __( 'Loading all matching IDs…', 'boulk-update-products' ),
+					),
+				)
+			);
+		}
 	}
 
 	/**
@@ -137,6 +194,9 @@ class Boulk_UP_Admin {
 				<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::MENU_SLUG . '&tab=history' ) ); ?>" class="nav-tab <?php echo 'history' === $tab ? 'nav-tab-active' : ''; ?>">
 					<?php esc_html_e( 'Import History', 'boulk-update-products' ); ?>
 				</a>
+				<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::MENU_SLUG . '&tab=products' ) ); ?>" class="nav-tab <?php echo 'products' === $tab ? 'nav-tab-active' : ''; ?>">
+					<?php esc_html_e( 'Product Manager', 'boulk-update-products' ); ?>
+				</a>
 				<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::MENU_SLUG . '&tab=docs' ) ); ?>" class="nav-tab <?php echo 'docs' === $tab ? 'nav-tab-active' : ''; ?>">
 					<?php esc_html_e( 'Documentation', 'boulk-update-products' ); ?>
 				</a>
@@ -147,6 +207,9 @@ class Boulk_UP_Admin {
 				switch ( $tab ) {
 					case 'history':
 						$this->render_history_tab( $job );
+						break;
+					case 'products':
+						$this->render_products_tab();
 						break;
 					case 'docs':
 						$this->render_docs_tab();
@@ -943,6 +1006,226 @@ class Boulk_UP_Admin {
 		}
 		fclose( $out );
 		exit;
+	}
+
+	/**
+	 * Product Manager tab.
+	 */
+	private function render_products_tab() {
+		$per_page_options = Boulk_UP_Product_Manager::PER_PAGE_OPTIONS;
+		?>
+		<div class="boulk-pm" id="boulk-product-manager">
+			<p class="description">
+				<?php esc_html_e( 'Browse, search, and bulk-update WooCommerce products without loading the full posts screen. Large selections run in the background.', 'boulk-update-products' ); ?>
+			</p>
+
+			<div class="boulk-pm-controls">
+				<label>
+					<?php esc_html_e( 'Rows per load', 'boulk-update-products' ); ?>
+					<select id="boulk-pm-per-page">
+						<?php foreach ( $per_page_options as $n ) : ?>
+							<option value="<?php echo esc_attr( (string) $n ); ?>"><?php echo esc_html( number_format_i18n( $n ) ); ?></option>
+						<?php endforeach; ?>
+						<option value="all"><?php esc_html_e( 'All (chunks of 5,000)', 'boulk-update-products' ); ?></option>
+					</select>
+				</label>
+				<label class="boulk-pm-search-wrap">
+					<?php esc_html_e( 'Search SKU or name', 'boulk-update-products' ); ?>
+					<input type="search" id="boulk-pm-search" class="regular-text" placeholder="<?php esc_attr_e( 'Search…', 'boulk-update-products' ); ?>" />
+				</label>
+				<button type="button" class="button" id="boulk-pm-reload"><?php esc_html_e( 'Search / Reload', 'boulk-update-products' ); ?></button>
+			</div>
+
+			<div class="boulk-pm-toolbar">
+				<span class="boulk-pm-selection-count" id="boulk-pm-selection-count">0 <?php esc_html_e( 'selected', 'boulk-update-products' ); ?></span>
+				<button type="button" class="button button-small" id="boulk-pm-select-page"><?php esc_html_e( 'Select all on page', 'boulk-update-products' ); ?></button>
+				<button type="button" class="button button-small" id="boulk-pm-select-all"><?php esc_html_e( 'Select all matching', 'boulk-update-products' ); ?></button>
+				<button type="button" class="button button-small" id="boulk-pm-clear-selection"><?php esc_html_e( 'Clear selection', 'boulk-update-products' ); ?></button>
+				<span class="boulk-pm-toolbar-spacer"></span>
+				<button type="button" class="button button-primary" id="boulk-pm-bulk-update"><?php esc_html_e( 'Bulk update', 'boulk-update-products' ); ?></button>
+				<button type="button" class="button button-link-delete" id="boulk-pm-bulk-delete"><?php esc_html_e( 'Delete selected', 'boulk-update-products' ); ?></button>
+			</div>
+
+			<div class="boulk-pm-status">
+				<span class="spinner" id="boulk-pm-spinner"></span>
+				<span id="boulk-pm-range"></span>
+			</div>
+			<div class="notice notice-warning inline boulk-pm-capped-notice" id="boulk-pm-capped-notice" style="display:none;"></div>
+
+			<div class="boulk-pm-progress" id="boulk-pm-progress" style="display:none;">
+				<div class="boulk-progress-bar"><div class="boulk-progress-fill" style="width:0%"></div></div>
+				<p class="boulk-progress-text"></p>
+			</div>
+
+			<div class="boulk-pm-table-wrap">
+				<table class="widefat striped boulk-pm-table">
+					<thead>
+						<tr>
+							<td class="check-column"><input type="checkbox" id="boulk-pm-check-all" /></td>
+							<th><?php esc_html_e( 'ID', 'boulk-update-products' ); ?></th>
+							<th><?php esc_html_e( 'SKU', 'boulk-update-products' ); ?></th>
+							<th><?php esc_html_e( 'Name', 'boulk-update-products' ); ?></th>
+							<th><?php esc_html_e( 'Regular price', 'boulk-update-products' ); ?></th>
+							<th><?php esc_html_e( 'Sale price', 'boulk-update-products' ); ?></th>
+							<th><?php esc_html_e( 'Stock', 'boulk-update-products' ); ?></th>
+							<th><?php esc_html_e( 'Status', 'boulk-update-products' ); ?></th>
+							<th><?php esc_html_e( 'Edit', 'boulk-update-products' ); ?></th>
+						</tr>
+					</thead>
+					<tbody id="boulk-pm-tbody"></tbody>
+				</table>
+			</div>
+
+			<p class="boulk-pm-pagination">
+				<button type="button" class="button" id="boulk-pm-prev" style="display:none;"><?php esc_html_e( 'Previous page', 'boulk-update-products' ); ?></button>
+				<button type="button" class="button" id="boulk-pm-next" style="display:none;"><?php esc_html_e( 'Next page', 'boulk-update-products' ); ?></button>
+				<button type="button" class="button" id="boulk-pm-next-chunk" style="display:none;"><?php esc_html_e( 'Load next chunk', 'boulk-update-products' ); ?></button>
+			</p>
+		</div>
+
+		<div id="boulk-pm-modal" class="boulk-pm-modal" style="display:none;" role="dialog" aria-modal="true">
+			<div class="boulk-pm-modal-backdrop"></div>
+			<div class="boulk-pm-modal-content">
+				<h2><?php esc_html_e( 'Bulk update selected products', 'boulk-update-products' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Leave a field empty to leave it unchanged on each selected product.', 'boulk-update-products' ); ?></p>
+				<table class="form-table">
+					<tr>
+						<th><label for="boulk-pm-regular-price"><?php esc_html_e( 'Regular price', 'boulk-update-products' ); ?></label></th>
+						<td><input type="text" id="boulk-pm-regular-price" class="regular-text" /></td>
+					</tr>
+					<tr>
+						<th><label for="boulk-pm-sale-price"><?php esc_html_e( 'Sale price', 'boulk-update-products' ); ?></label></th>
+						<td><input type="text" id="boulk-pm-sale-price" class="regular-text" /></td>
+					</tr>
+					<tr>
+						<th><label for="boulk-pm-stock-status"><?php esc_html_e( 'Stock status', 'boulk-update-products' ); ?></label></th>
+						<td>
+							<select id="boulk-pm-stock-status">
+								<option value=""><?php esc_html_e( '— No change —', 'boulk-update-products' ); ?></option>
+								<option value="instock"><?php esc_html_e( 'In stock', 'boulk-update-products' ); ?></option>
+								<option value="outofstock"><?php esc_html_e( 'Out of stock', 'boulk-update-products' ); ?></option>
+								<option value="onbackorder"><?php esc_html_e( 'On backorder', 'boulk-update-products' ); ?></option>
+							</select>
+						</td>
+					</tr>
+				</table>
+				<p class="submit">
+					<button type="button" class="button button-primary" id="boulk-pm-modal-apply"><?php esc_html_e( 'Apply to selection', 'boulk-update-products' ); ?></button>
+					<button type="button" class="button" id="boulk-pm-modal-cancel"><?php esc_html_e( 'Cancel', 'boulk-update-products' ); ?></button>
+				</p>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Verify Product Manager AJAX request.
+	 */
+	private function verify_products_ajax() {
+		check_ajax_referer( 'boulk_up_products', 'nonce' );
+
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'boulk-update-products' ) ), 403 );
+		}
+	}
+
+	/**
+	 * Parse product IDs from POST (max 10,000).
+	 *
+	 * @return int[]
+	 */
+	private function parse_product_ids_from_request() {
+		$ids = isset( $_POST['ids'] ) ? wp_unslash( $_POST['ids'] ) : array();
+		if ( ! is_array( $ids ) ) {
+			$ids = array( $ids );
+		}
+		$ids = array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) );
+		if ( count( $ids ) > 10000 ) {
+			$ids = array_slice( $ids, 0, 10000 );
+		}
+		return $ids;
+	}
+
+	/**
+	 * AJAX: list products.
+	 */
+	public function ajax_products_list() {
+		$this->verify_products_ajax();
+
+		$page     = isset( $_POST['page'] ) ? max( 1, (int) $_POST['page'] ) : 1;
+		$per_page = isset( $_POST['per_page'] ) ? Boulk_UP_Product_Manager::sanitize_per_page( wp_unslash( $_POST['per_page'] ) ) : 1000;
+		$search   = isset( $_POST['search'] ) ? sanitize_text_field( wp_unslash( $_POST['search'] ) ) : '';
+		$chunk    = isset( $_POST['chunk'] ) ? max( 0, (int) $_POST['chunk'] ) : 0;
+
+		$manager = new Boulk_UP_Product_Manager();
+		wp_send_json_success( $manager->list_products( $page, $per_page, $search, $chunk ) );
+	}
+
+	/**
+	 * AJAX: select all matching IDs.
+	 */
+	public function ajax_products_select_all_ids() {
+		$this->verify_products_ajax();
+
+		$search  = isset( $_POST['search'] ) ? sanitize_text_field( wp_unslash( $_POST['search'] ) ) : '';
+		$manager = new Boulk_UP_Product_Manager();
+		wp_send_json_success( $manager->get_all_matching_ids( $search ) );
+	}
+
+	/**
+	 * AJAX: bulk update.
+	 */
+	public function ajax_products_bulk_update() {
+		$this->verify_products_ajax();
+
+		$ids = $this->parse_product_ids_from_request();
+		$payload = array(
+			'regular_price' => isset( $_POST['regular_price'] ) ? sanitize_text_field( wp_unslash( $_POST['regular_price'] ) ) : '',
+			'sale_price'    => isset( $_POST['sale_price'] ) ? sanitize_text_field( wp_unslash( $_POST['sale_price'] ) ) : '',
+			'stock_status'  => isset( $_POST['stock_status'] ) ? sanitize_key( wp_unslash( $_POST['stock_status'] ) ) : '',
+		);
+
+		$manager = new Boulk_UP_Product_Manager();
+		$result  = $manager->bulk_update( $ids, $payload );
+
+		if ( empty( $result['success'] ) ) {
+			wp_send_json_error( array( 'message' => isset( $result['message'] ) ? $result['message'] : __( 'Update failed.', 'boulk-update-products' ) ) );
+		}
+
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: bulk delete (trash).
+	 */
+	public function ajax_products_bulk_delete() {
+		$this->verify_products_ajax();
+
+		$ids     = $this->parse_product_ids_from_request();
+		$manager = new Boulk_UP_Product_Manager();
+		$result  = $manager->bulk_delete( $ids );
+
+		if ( empty( $result['success'] ) ) {
+			wp_send_json_error( array( 'message' => isset( $result['message'] ) ? $result['message'] : __( 'Delete failed.', 'boulk-update-products' ) ) );
+		}
+
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: bulk action job status.
+	 */
+	public function ajax_bulk_action_status() {
+		$this->verify_products_ajax();
+
+		$job_id = isset( $_POST['job_id'] ) ? sanitize_text_field( wp_unslash( $_POST['job_id'] ) ) : '';
+		$status = Boulk_UP_Bulk_Action_Processor::get_status( $job_id );
+
+		if ( ! $status ) {
+			wp_send_json_error( array( 'message' => __( 'Job not found.', 'boulk-update-products' ) ), 404 );
+		}
+
+		wp_send_json_success( $status );
 	}
 
 	/**

@@ -4,7 +4,7 @@ Tags: woocommerce, yoast, bulk, csv, import, seo
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,6 +26,7 @@ Boulk Bulk Product Update lets store managers update thousands of WooCommerce pr
 * Dry run mode (validate without saving)
 * Background batched processing with import size profiles (10k+ rows per run) via Action Scheduler
 * Import history with progress tracking and downloadable error logs
+* **Product Manager** tab: fast AJAX product table, search, bulk price/stock updates, bulk trash, and background jobs for large selections
 
 == Installation ==
 
@@ -93,6 +94,10 @@ Yes. Include only `sku` and `updated_price` (and/or `sale_price`) columns. Empty
 CSV only in v1.0. Export your spreadsheet as CSV from Excel or Google Sheets.
 
 == Changelog ==
+
+= 1.5.0 =
+* Product Manager tab: list products (1,000–10,000 rows per load or chunked “all”), search by SKU/name, select page or all matching, bulk update regular/sale price and stock status, bulk move to trash
+* Background processing for bulk actions on more than 500 products
 
 = 1.3.1 =
 * CSV column `updated_price` (and aliases) maps to WooCommerce regular price

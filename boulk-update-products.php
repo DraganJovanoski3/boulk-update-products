@@ -3,7 +3,7 @@
  * Plugin Name:       Boulk Bulk Product Update
  * Plugin URI:        https://github.com/boulk/bulk-update-products
  * Description:       Bulk update WooCommerce products and Yoast SEO fields from CSV files. Matched by SKU with batched background processing.
- * Version:           1.4.2
+ * Version:           1.5.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Boulk
@@ -16,7 +16,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BOULK_UP_VERSION', '1.4.2' );
+define( 'BOULK_UP_VERSION', '1.5.0' );
+define( 'BOULK_UP_BULK_HOOK', 'boulk_up_process_bulk_action' );
 define( 'BOULK_UP_PLUGIN_FILE', __FILE__ );
 define( 'BOULK_UP_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'BOULK_UP_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -30,6 +31,8 @@ require_once BOULK_UP_PLUGIN_DIR . 'includes/class-import-job.php';
 require_once BOULK_UP_PLUGIN_DIR . 'includes/class-yoast-updater.php';
 require_once BOULK_UP_PLUGIN_DIR . 'includes/class-product-updater.php';
 require_once BOULK_UP_PLUGIN_DIR . 'includes/class-batch-processor.php';
+require_once BOULK_UP_PLUGIN_DIR . 'includes/class-bulk-action-job.php';
+require_once BOULK_UP_PLUGIN_DIR . 'includes/class-product-manager.php';
 require_once BOULK_UP_PLUGIN_DIR . 'includes/class-admin.php';
 require_once BOULK_UP_PLUGIN_DIR . 'includes/class-plugin.php';
 

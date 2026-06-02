@@ -1,0 +1,141 @@
+.boulk-pm-controls {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px 20px;
+	align-items: flex-end;
+	margin: 16px 0;
+}
+
+.boulk-pm-controls label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-weight: 600;
+}
+
+.boulk-pm-search-wrap input {
+	min-width: 220px;
+}
+
+.boulk-pm-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 12px;
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	position: sticky;
+	top: 32px;
+	z-index: 10;
+	margin-bottom: 12px;
+}
+
+.boulk-pm-toolbar-spacer {
+	flex: 1;
+	min-width: 8px;
+}
+
+.boulk-pm-selection-count {
+	font-weight: 600;
+	margin-right: 8px;
+}
+
+.boulk-pm-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+	min-height: 24px;
+}
+
+.boulk-pm-status .spinner {
+	float: none;
+	margin: 0;
+	visibility: visible;
+}
+
+.boulk-pm-status .spinner.is-active {
+	visibility: visible;
+}
+
+.boulk-pm-capped-notice {
+	margin: 0 0 12px;
+}
+
+.boulk-pm-progress {
+	margin-bottom: 12px;
+	max-width: 480px;
+}
+
+.boulk-pm-table-wrap {
+	overflow: auto;
+	max-height: calc(100vh - 280px);
+	border: 1px solid #c3c4c7;
+	background: #fff;
+}
+
+.boulk-pm-table {
+	margin: 0;
+	border: 0;
+}
+
+.boulk-pm-table thead th,
+.boulk-pm-table thead td {
+	position: sticky;
+	top: 0;
+	background: #f0f0f1;
+	z-index: 2;
+}
+
+.boulk-pm-table .check-column {
+	width: 2.2em;
+}
+
+.boulk-pm-table tbody tr.is-selected {
+	background: #f0f6fc;
+}
+
+.boulk-pm-table .col-name {
+	max-width: 280px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.boulk-pm-pagination {
+	margin-top: 12px;
+}
+
+.boulk-pm-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 100100;
+}
+
+.boulk-pm-modal-backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.55);
+}
+
+.boulk-pm-modal-content {
+	position: relative;
+	max-width: 520px;
+	margin: 48px auto;
+	background: #fff;
+	padding: 20px 24px;
+	border-radius: 4px;
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+	z-index: 1;
+}
+
+.boulk-pm-modal-content h2 {
+	margin-top: 0;
+}
+
+.boulk-pm.is-busy {
+	pointer-events: none;
+	opacity: 0.85;
+}

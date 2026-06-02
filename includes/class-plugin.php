@@ -50,6 +50,7 @@ class Boulk_UP_Plugin {
 		load_plugin_textdomain( 'boulk-update-products', false, dirname( plugin_basename( BOULK_UP_PLUGIN_FILE ) ) . '/languages' );
 
 		Boulk_UP_Batch_Processor::instance();
+		Boulk_UP_Bulk_Action_Processor::init();
 		Boulk_UP_Admin::instance();
 	}
 
@@ -118,5 +119,11 @@ class Boulk_UP_Plugin {
 			as_unschedule_all_actions( BOULK_UP_BATCH_HOOK );
 		}
 		wp_clear_scheduled_hook( BOULK_UP_CRON_HOOK );
+		if ( defined( 'BOULK_UP_BULK_HOOK' ) ) {
+			wp_clear_scheduled_hook( BOULK_UP_BULK_HOOK );
+		}
+		if ( function_exists( 'as_unschedule_all_actions' ) ) {
+			as_unschedule_all_actions( Boulk_UP_Bulk_Action_Job::HOOK );
+		}
 	}
 }
