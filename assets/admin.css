@@ -1,0 +1,118 @@
+.boulk-up-wrap {
+	max-width: 1100px;
+}
+
+.boulk-up-tab-content {
+	margin-top: 20px;
+}
+
+.boulk-up-panel {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 20px 24px;
+	margin-bottom: 20px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.boulk-up-panel h2 {
+	margin-top: 0;
+}
+
+.boulk-progress-bar {
+	background: #f0f0f1;
+	border-radius: 4px;
+	height: 8px;
+	overflow: hidden;
+	margin: 4px 0;
+	min-width: 120px;
+}
+
+.boulk-progress-large {
+	height: 16px;
+	margin: 12px 0;
+}
+
+.boulk-progress-fill {
+	background: #2271b1;
+	height: 100%;
+	transition: width 0.3s ease;
+	border-radius: 4px;
+}
+
+.boulk-progress-text {
+	font-size: 12px;
+	color: #646970;
+}
+
+.boulk-status {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.boulk-status-queued {
+	background: #f0f6fc;
+	color: #2271b1;
+}
+
+.boulk-status-running {
+	background: #fcf9e8;
+	color: #996800;
+}
+
+.boulk-status-complete {
+	background: #edfaef;
+	color: #1e7e34;
+}
+
+.boulk-status-failed,
+.boulk-status-cancelled {
+	background: #fcf0f1;
+	color: #b32d2e;
+}
+
+.boulk-badge {
+	display: inline-block;
+	margin-left: 6px;
+	padding: 1px 6px;
+	background: #f0f0f1;
+	border-radius: 3px;
+	font-size: 11px;
+	color: #50575e;
+}
+
+.boulk-stats {
+	list-style: none;
+	margin: 12px 0;
+	padding: 0;
+	display: flex;
+	gap: 24px;
+}
+
+.boulk-stats li {
+	margin: 0;
+}
+
+.boulk-up-tips {
+	list-style: disc;
+	margin-left: 20px;
+}
+
+.boulk-up-tips li {
+	margin-bottom: 6px;
+}
+
+.boulk-cancel-link {
+	color: #b32d2e;
+}
+
+.boulk-log-preview {
+	margin-top: 12px;
+}
+
+.boulk-log-preview td {
+	font-size: 13px;
+}
