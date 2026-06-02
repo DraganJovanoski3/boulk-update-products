@@ -41,6 +41,23 @@
 			});
 	}
 
+	function renderIssueRows($tbody, entries) {
+		if (!$tbody.length) {
+			return;
+		}
+		$tbody.empty();
+		if (!entries || !entries.length) {
+			return;
+		}
+		entries.forEach(function (entry) {
+			$tbody.append(
+				'<tr><td>' + escHtml(String(entry.row)) + '</td>' +
+				'<td><code>' + escHtml(entry.sku) + '</code></td>' +
+				'<td>' + escHtml(entry.message) + '</td></tr>'
+			);
+		});
+	}
+
 	function updateProgress($container, d) {
 		$container.find('.boulk-progress-fill').css('width', d.percent + '%');
 		$container.find('.boulk-status').attr('class', 'boulk-status boulk-status-' + d.status).text(d.statusLabel);
@@ -51,20 +68,8 @@
 		$container.find('.boulk-stat-skipped').text(d.skipped);
 		$container.find('.boulk-stat-errors').text(d.errors);
 
-		if (d.logEntries && d.logEntries.length) {
-			var $tbody = $container.find('.boulk-log-entries');
-			if ($tbody.length) {
-				$tbody.empty();
-				d.logEntries.forEach(function (entry) {
-					$tbody.append(
-						'<tr><td>' + escHtml(String(entry.row)) + '</td>' +
-						'<td>' + escHtml(entry.sku) + '</td>' +
-						'<td>' + escHtml(entry.status) + '</td>' +
-						'<td>' + escHtml(entry.message) + '</td></tr>'
-					);
-				});
-			}
-		}
+		renderIssueRows($container.find('.boulk-error-entries'), d.errorEntries);
+		renderIssueRows($container.find('.boulk-skipped-entries'), d.skippedEntries);
 	}
 
 	function escHtml(str) {
@@ -133,8 +138,61 @@
 		});
 	}
 
+	function initFieldSelection() {
+		var $groups = $('.boulk-field-groups');
+		var $checkboxes = $('.boulk-field-cb');
+		if (!$checkboxes.length) {
+			return;
+		}
+
+		var presets = $groups.data('presets');
+		if (typeof presets === 'string') {
+			try {
+				presets = JSON.parse(presets);
+			} catch (e) {
+				presets = {};
+			}
+		}
+
+		function setFields(fieldList) {
+			$checkboxes.prop('checked', false);
+			if (!fieldList || !fieldList.length) {
+				return;
+			}
+			fieldList.forEach(function (field) {
+				$checkboxes.filter('[value="' + field + '"]').prop('checked', true);
+			});
+		}
+
+		$('.boulk-select-all').on('click', function (e) {
+			e.preventDefault();
+			$checkboxes.prop('checked', true);
+		});
+
+		$('.boulk-select-none').on('click', function (e) {
+			e.preventDefault();
+			$checkboxes.prop('checked', false);
+		});
+
+		$('.boulk-preset-btn').on('click', function (e) {
+			e.preventDefault();
+			var key = $(this).data('preset');
+			if (presets && presets[key]) {
+				setFields(presets[key]);
+			}
+		});
+
+		$('.boulk-up-import-form').on('submit', function () {
+			if ($checkboxes.filter(':checked').length === 0) {
+				alert('Please select at least one field to update.');
+				return false;
+			}
+		});
+	}
+
 	$(document).ready(function () {
 		initPolling();
 		initProfileDescriptions();
+		initFieldSelection();
 	});
 })(jQuery);

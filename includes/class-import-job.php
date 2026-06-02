@@ -54,10 +54,11 @@ class Boulk_UP_Import_Job {
 	 *
 	 * @param string $source_file Path to uploaded CSV.
 	 * @param bool   $dry_run     Whether this is a dry run.
-	 * @param string $profile     Import performance profile.
+	 * @param string   $profile       Import performance profile.
+	 * @param string[] $update_fields Fields to update (empty = all).
 	 * @return Boulk_UP_Import_Job|WP_Error
 	 */
-	public static function create( $source_file, $dry_run = false, $profile = '' ) {
+	public static function create( $source_file, $dry_run = false, $profile = '', $update_fields = array() ) {
 		self::ensure_upload_dir();
 
 		$id = 'job_' . wp_generate_password( 12, false, false );
@@ -73,16 +74,25 @@ class Boulk_UP_Import_Job {
 			return new WP_Error( 'boulk_copy_failed', __( 'Could not store CSV file for import.', 'boulk-update-products' ) );
 		}
 
-		$profile = Boulk_UP_Import_Config::sanitize_profile( $profile );
+		$profile       = Boulk_UP_Import_Config::sanitize_profile( $profile );
+		$update_fields = Boulk_UP_Update_Fields::sanitize_selection( $update_fields );
+
+		if ( empty( $update_fields ) ) {
+			return new WP_Error(
+				'boulk_no_fields',
+				__( 'Select at least one field to update.', 'boulk-update-products' )
+			);
+		}
 
 		$job = new self(
 			$id,
 			array(
-				'id'           => $id,
-				'status'       => self::STATUS_QUEUED,
-				'dry_run'      => (bool) $dry_run,
-				'profile'      => $profile,
-				'file_path'    => $dest,
+				'id'            => $id,
+				'status'        => self::STATUS_QUEUED,
+				'dry_run'       => (bool) $dry_run,
+				'profile'       => $profile,
+				'update_fields' => $update_fields,
+				'file_path'     => $dest,
 				'total_rows'   => $parser->get_total_rows(),
 				'processed'    => 0,
 				'updated'      => 0,
@@ -244,11 +254,9 @@ class Boulk_UP_Import_Job {
 	 * @param string $message    Log message.
 	 */
 	public function add_log( $row_number, $sku, $status, $message = '' ) {
-		if ( ! isset( $this->data['log_entries'] ) || ! is_array( $this->data['log_entries'] ) ) {
-			$this->data['log_entries'] = array();
-		}
+		$sku = '' !== trim( $sku ) ? trim( $sku ) : __( '(empty SKU)', 'boulk-update-products' );
 
-		$this->data['log_entries'][] = array(
+		$entry = array(
 			'row'     => $row_number,
 			'sku'     => $sku,
 			'status'  => $status,
@@ -256,12 +264,42 @@ class Boulk_UP_Import_Job {
 			'time'    => current_time( 'mysql' ),
 		);
 
-		// Keep last 5000 entries in option; full log in file.
+		if ( ! isset( $this->data['log_entries'] ) || ! is_array( $this->data['log_entries'] ) ) {
+			$this->data['log_entries'] = array();
+		}
+		$this->data['log_entries'][] = $entry;
+
 		if ( count( $this->data['log_entries'] ) > 100 ) {
 			$this->data['log_entries'] = array_slice( $this->data['log_entries'], -100 );
 		}
 
+		if ( 'error' === $status ) {
+			$this->append_issue_cache( 'error_entries', $entry );
+		} elseif ( 'skipped' === $status ) {
+			$this->append_issue_cache( 'skipped_entries', $entry );
+		}
+
 		$this->append_log_file( $row_number, $sku, $status, $message );
+
+		if ( in_array( $status, array( 'error', 'skipped' ), true ) ) {
+			$this->append_status_log_file( $status, $row_number, $sku, $message );
+		}
+	}
+
+	/**
+	 * Keep recent error/skipped entries in job data for live UI updates.
+	 *
+	 * @param string               $key   error_entries|skipped_entries.
+	 * @param array<string, mixed> $entry Log entry.
+	 */
+	private function append_issue_cache( $key, $entry ) {
+		if ( ! isset( $this->data[ $key ] ) || ! is_array( $this->data[ $key ] ) ) {
+			$this->data[ $key ] = array();
+		}
+		$this->data[ $key ][] = $entry;
+		if ( count( $this->data[ $key ] ) > 200 ) {
+			$this->data[ $key ] = array_slice( $this->data[ $key ], -200 );
+		}
 	}
 
 	/**
@@ -290,13 +328,181 @@ class Boulk_UP_Import_Job {
 	}
 
 	/**
-	 * Get log file path.
+	 * Append errors or skipped rows to a dedicated CSV file.
+	 *
+	 * @param string $status     error|skipped.
+	 * @param int    $row_number Row number.
+	 * @param string $sku        SKU.
+	 * @param string $message    Message.
+	 */
+	private function append_status_log_file( $status, $row_number, $sku, $message ) {
+		$path   = $this->get_status_log_path( $status );
+		$exists = file_exists( $path );
+
+		$handle = fopen( $path, 'ab' );
+		if ( ! $handle ) {
+			return;
+		}
+
+		if ( ! $exists ) {
+			fputcsv( $handle, array( 'row', 'sku', 'reason', 'time' ) );
+		}
+
+		fputcsv( $handle, array( $row_number, $sku, $message, current_time( 'mysql' ) ) );
+		fclose( $handle );
+	}
+
+	/**
+	 * Get full log file path.
 	 *
 	 * @return string|null
 	 */
 	public function get_log_file_path() {
 		$path = self::get_upload_dir() . '/' . $this->id . '-log.csv';
 		return file_exists( $path ) ? $path : null;
+	}
+
+	/**
+	 * Get errors or skipped log file path.
+	 *
+	 * @param string $status error|skipped|all.
+	 * @return string|null
+	 */
+	public function get_status_log_path( $status ) {
+		if ( 'all' === $status ) {
+			return $this->get_log_file_path();
+		}
+
+		if ( ! in_array( $status, array( 'error', 'skipped' ), true ) ) {
+			return null;
+		}
+
+		$path = self::get_upload_dir() . '/' . $this->id . '-' . $status . 's.csv';
+		return file_exists( $path ) ? $path : null;
+	}
+
+	/**
+	 * Read error or skipped log entries from disk.
+	 *
+	 * @param string $status error|skipped.
+	 * @param int    $limit  Max rows to read.
+	 * @return array<int, array{row: int|string, sku: string, message: string, time: string}>
+	 */
+	public function read_status_log( $status, $limit = 500 ) {
+		$path = $this->get_status_log_path( $status );
+		if ( $path ) {
+			$entries = $this->read_csv_log_file( $path, $status, $limit, false );
+			if ( ! empty( $entries ) ) {
+				return $entries;
+			}
+		}
+
+		$full_log = $this->get_log_file_path();
+		if ( $full_log ) {
+			$entries = $this->read_csv_log_file( $full_log, $status, $limit, true );
+			if ( ! empty( $entries ) ) {
+				return $entries;
+			}
+		}
+
+		return $this->get_cached_issues( $status, $limit );
+	}
+
+	/**
+	 * Read rows from a CSV log file.
+	 *
+	 * @param string $path           File path.
+	 * @param string $status         Filter status for full log.
+	 * @param int    $limit          Max rows.
+	 * @param bool   $filter_by_status Whether CSV has a status column to filter.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function read_csv_log_file( $path, $status, $limit, $filter_by_status ) {
+		$entries = array();
+		$handle  = fopen( $path, 'rb' );
+		if ( ! $handle ) {
+			return $entries;
+		}
+
+		fgetcsv( $handle );
+
+		while ( ( $data = fgetcsv( $handle ) ) !== false && count( $entries ) < $limit ) {
+			if ( empty( $data ) ) {
+				continue;
+			}
+
+			if ( $filter_by_status ) {
+				$row_status = isset( $data[2] ) ? $data[2] : '';
+				if ( $row_status !== $status ) {
+					continue;
+				}
+				$entries[] = array(
+					'row'     => isset( $data[0] ) ? $data[0] : '',
+					'sku'     => isset( $data[1] ) ? $data[1] : '',
+					'message' => isset( $data[3] ) ? $data[3] : '',
+					'time'    => isset( $data[4] ) ? $data[4] : '',
+					'status'  => $status,
+				);
+			} else {
+				$entries[] = array(
+					'row'     => isset( $data[0] ) ? $data[0] : '',
+					'sku'     => isset( $data[1] ) ? $data[1] : '',
+					'message' => isset( $data[2] ) ? $data[2] : '',
+					'time'    => isset( $data[3] ) ? $data[3] : '',
+					'status'  => $status,
+				);
+			}
+		}
+
+		fclose( $handle );
+		return $entries;
+	}
+
+	/**
+	 * Get cached issue entries from job option (fallback / live preview).
+	 *
+	 * @param string $status error|skipped.
+	 * @param int    $limit  Max entries.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function get_cached_issues( $status, $limit = 200 ) {
+		$key = 'error' === $status ? 'error_entries' : 'skipped_entries';
+		$entries = $this->get( $key, array() );
+
+		if ( ! is_array( $entries ) ) {
+			return array();
+		}
+
+		return array_slice( $entries, -$limit );
+	}
+
+	/**
+	 * Count lines in a status log file (excluding header).
+	 *
+	 * @param string $status error|skipped.
+	 * @return int
+	 */
+	public function count_status_log( $status ) {
+		$path = $this->get_status_log_path( $status );
+		if ( ! $path ) {
+			$key = 'error' === $status ? 'error_entries' : 'skipped_entries';
+			$cached = $this->get( $key, array() );
+			return is_array( $cached ) ? count( $cached ) : 0;
+		}
+
+		$count  = 0;
+		$handle = fopen( $path, 'rb' );
+		if ( ! $handle ) {
+			return 0;
+		}
+
+		fgetcsv( $handle );
+		while ( fgetcsv( $handle ) !== false ) {
+			++$count;
+		}
+		fclose( $handle );
+
+		return $count;
 	}
 
 	/**

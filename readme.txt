@@ -4,7 +4,7 @@ Tags: woocommerce, yoast, bulk, csv, import, seo
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -93,6 +93,14 @@ Yes. Include only `sku` and `regular_price` (and/or `sale_price`) columns. Empty
 CSV only in v1.0. Export your spreadsheet as CSV from Excel or Google Sheets.
 
 == Changelog ==
+
+= 1.3.0 =
+* Errors and skipped rows listed by SKU with reason in admin
+* Separate CSV downloads for errors-only and skipped-only
+
+= 1.2.0 =
+* Choose which fields to update on each import (e.g. prices only)
+* Quick presets: All fields, Prices only, SEO only, Content only
 
 = 1.1.0 =
 * Import size profiles: Standard, Large (~10k), Maximum (50k+)

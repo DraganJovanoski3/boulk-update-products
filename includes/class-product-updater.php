@@ -20,10 +20,20 @@ class Boulk_UP_Product_Updater {
 	private $yoast;
 
 	/**
-	 * Constructor.
+	 * Enabled field keys, or null for all fields.
+	 *
+	 * @var string[]|null
 	 */
-	public function __construct() {
-		$this->yoast = new Boulk_UP_Yoast_Updater();
+	private $enabled_fields;
+
+	/**
+	 * Constructor.
+	 *
+	 * @param string[]|null $enabled_fields Fields to update; null = all.
+	 */
+	public function __construct( $enabled_fields = null ) {
+		$this->enabled_fields = $enabled_fields;
+		$this->yoast          = new Boulk_UP_Yoast_Updater( $enabled_fields );
 	}
 
 	/**
@@ -35,6 +45,8 @@ class Boulk_UP_Product_Updater {
 	 * @return array{status: string, message: string}
 	 */
 	public function process_row( $row, $row_number, $dry_run = false ) {
+		$row = Boulk_UP_Update_Fields::filter_row( $row, $this->enabled_fields );
+
 		$sku = isset( $row['sku'] ) ? trim( $row['sku'] ) : '';
 
 		if ( '' === $sku ) {
@@ -70,18 +82,42 @@ class Boulk_UP_Product_Updater {
 
 		$warnings = array();
 		$post_id  = $product->get_id();
+		$changed  = false;
 
 		try {
-			$this->apply_product_fields( $product, $row, $warnings );
-			$product->save();
+			if ( $this->apply_product_fields( $product, $row, $warnings ) ) {
+				$product->save();
+				$changed = true;
+			}
 
-			$this->apply_post_fields( $post_id, $row, $warnings );
-			$this->yoast->update( $post_id, $row );
-			$this->apply_alt_text( $post_id, $row );
-			$this->apply_categories( $post_id, $row, $warnings );
-			$this->apply_cross_sells( $product, $row, $warnings );
+			if ( $this->apply_post_fields( $post_id, $row, $warnings ) ) {
+				$changed = true;
+			}
+
+			if ( $this->yoast->update( $post_id, $row ) ) {
+				$changed = true;
+			}
+
+			if ( $this->apply_alt_text( $post_id, $row ) ) {
+				$changed = true;
+			}
+
+			if ( $this->apply_categories( $post_id, $row, $warnings ) ) {
+				$changed = true;
+			}
+
+			if ( $this->apply_cross_sells( $product, $row, $warnings ) ) {
+				$changed = true;
+			}
 
 			wc_delete_product_transients( $post_id );
+
+			if ( ! $changed ) {
+				return array(
+					'status'  => 'skipped',
+					'message' => __( 'No values to update in selected fields for this row.', 'boulk-update-products' ),
+				);
+			}
 
 			$message = __( 'Product updated successfully.', 'boulk-update-products' );
 			if ( ! empty( $warnings ) ) {
@@ -101,35 +137,52 @@ class Boulk_UP_Product_Updater {
 	}
 
 	/**
+	 * Check if field is enabled for this import.
+	 *
+	 * @param string $field Field key.
+	 * @return bool
+	 */
+	private function is_enabled( $field ) {
+		return Boulk_UP_Update_Fields::is_enabled( $field, $this->enabled_fields );
+	}
+
+	/**
 	 * Apply WooCommerce product object fields.
 	 *
 	 * @param WC_Product            $product  Product.
 	 * @param array<string, string> $row      Row data.
 	 * @param string[]              $warnings Warnings collector.
+	 * @return bool True if something changed.
 	 */
 	private function apply_product_fields( $product, $row, &$warnings ) {
-		if ( ! empty( $row['regular_price'] ) ) {
+		$changed = false;
+
+		if ( $this->is_enabled( 'regular_price' ) && ! empty( $row['regular_price'] ) ) {
 			$product->set_regular_price( wc_format_decimal( $row['regular_price'] ) );
+			$changed = true;
 		}
 
-		if ( ! empty( $row['sale_price'] ) ) {
+		if ( $this->is_enabled( 'sale_price' ) && ! empty( $row['sale_price'] ) ) {
 			$product->set_sale_price( wc_format_decimal( $row['sale_price'] ) );
-		} elseif ( array_key_exists( 'sale_price', $row ) && '' === $row['sale_price'] ) {
-			// Explicit empty sale_price in CSV could clear sale — only if column present and empty.
-			// Skip: empty means "don't update" per plan.
+			$changed = true;
 		}
 
-		if ( ! empty( $row['short_description'] ) ) {
+		if ( $this->is_enabled( 'short_description' ) && ! empty( $row['short_description'] ) ) {
 			$product->set_short_description( wp_kses_post( $row['short_description'] ) );
+			$changed = true;
 		}
 
-		if ( ! empty( $row['description'] ) ) {
+		if ( $this->is_enabled( 'description' ) && ! empty( $row['description'] ) ) {
 			$product->set_description( wp_kses_post( $row['description'] ) );
+			$changed = true;
 		}
 
-		if ( ! empty( $row['product_tax'] ) ) {
+		if ( $this->is_enabled( 'product_tax' ) && ! empty( $row['product_tax'] ) ) {
 			$product->set_tax_class( sanitize_title( $row['product_tax'] ) );
+			$changed = true;
 		}
+
+		return $changed;
 	}
 
 	/**
@@ -138,22 +191,28 @@ class Boulk_UP_Product_Updater {
 	 * @param int                   $post_id  Post ID.
 	 * @param array<string, string> $row      Row data.
 	 * @param string[]              $warnings Warnings.
+	 * @return bool
 	 */
 	private function apply_post_fields( $post_id, $row, &$warnings ) {
 		$post_update = array( 'ID' => $post_id );
+		$changed     = false;
 
-		if ( ! empty( $row['title'] ) ) {
+		if ( $this->is_enabled( 'title' ) && ! empty( $row['title'] ) ) {
 			$post_update['post_title'] = sanitize_text_field( $row['title'] );
+			$changed                   = true;
 		}
 
-		if ( ! empty( $row['slug'] ) ) {
-			$slug = sanitize_title( $row['slug'] );
-			$post_update['post_name'] = wp_unique_post_slug( $slug, $post_id, get_post_status( $post_id ), 'product', 0 );
+		if ( $this->is_enabled( 'slug' ) && ! empty( $row['slug'] ) ) {
+			$slug                       = sanitize_title( $row['slug'] );
+			$post_update['post_name']   = wp_unique_post_slug( $slug, $post_id, get_post_status( $post_id ), 'product', 0 );
+			$changed                    = true;
 		}
 
 		if ( count( $post_update ) > 1 ) {
 			wp_update_post( $post_update );
 		}
+
+		return $changed;
 	}
 
 	/**
@@ -161,18 +220,20 @@ class Boulk_UP_Product_Updater {
 	 *
 	 * @param int                   $post_id Post ID.
 	 * @param array<string, string> $row     Row data.
+	 * @return bool
 	 */
 	private function apply_alt_text( $post_id, $row ) {
-		if ( empty( $row['alt_text'] ) ) {
-			return;
+		if ( ! $this->is_enabled( 'alt_text' ) || empty( $row['alt_text'] ) ) {
+			return false;
 		}
 
 		$thumbnail_id = get_post_thumbnail_id( $post_id );
 		if ( ! $thumbnail_id ) {
-			return;
+			return false;
 		}
 
 		update_post_meta( $thumbnail_id, '_wp_attachment_image_alt', sanitize_text_field( $row['alt_text'] ) );
+		return true;
 	}
 
 	/**
@@ -181,14 +242,15 @@ class Boulk_UP_Product_Updater {
 	 * @param int                   $post_id  Post ID.
 	 * @param array<string, string> $row      Row data.
 	 * @param string[]              $warnings Warnings.
+	 * @return bool
 	 */
 	private function apply_categories( $post_id, $row, &$warnings ) {
-		if ( empty( $row['categories'] ) ) {
-			return;
+		if ( ! $this->is_enabled( 'categories' ) || empty( $row['categories'] ) ) {
+			return false;
 		}
 
-		$parts  = array_map( 'trim', explode( '|', $row['categories'] ) );
-		$terms  = array();
+		$parts = array_map( 'trim', explode( '|', $row['categories'] ) );
+		$terms = array();
 
 		foreach ( $parts as $part ) {
 			if ( '' === $part ) {
@@ -209,7 +271,10 @@ class Boulk_UP_Product_Updater {
 
 		if ( ! empty( $terms ) ) {
 			wp_set_object_terms( $post_id, $terms, 'product_cat' );
+			return true;
 		}
+
+		return false;
 	}
 
 	/**
@@ -238,10 +303,11 @@ class Boulk_UP_Product_Updater {
 	 * @param WC_Product            $product  Product.
 	 * @param array<string, string> $row      Row data.
 	 * @param string[]              $warnings Warnings.
+	 * @return bool
 	 */
 	private function apply_cross_sells( $product, $row, &$warnings ) {
-		if ( empty( $row['cross_sells'] ) ) {
-			return;
+		if ( ! $this->is_enabled( 'cross_sells' ) || empty( $row['cross_sells'] ) ) {
+			return false;
 		}
 
 		$skus = array_map( 'trim', explode( ',', $row['cross_sells'] ) );
@@ -266,5 +332,6 @@ class Boulk_UP_Product_Updater {
 
 		$product->set_cross_sell_ids( array_unique( $ids ) );
 		$product->save();
+		return true;
 	}
 }

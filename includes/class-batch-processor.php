@@ -163,7 +163,8 @@ class Boulk_UP_Batch_Processor {
 			return true;
 		}
 
-		$updater = new Boulk_UP_Product_Updater();
+		$update_fields = $job->get( 'update_fields', null );
+		$updater       = new Boulk_UP_Product_Updater( $update_fields );
 		$dry_run = (bool) $job->get( 'dry_run', false );
 		$total   = (int) $job->get( 'total_rows', 0 );
 
