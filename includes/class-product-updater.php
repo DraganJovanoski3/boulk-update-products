@@ -27,12 +27,21 @@ class Boulk_UP_Product_Updater {
 	private $enabled_fields;
 
 	/**
+	 * Create simple products when SKU is not found.
+	 *
+	 * @var bool
+	 */
+	private $create_missing;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param string[]|null $enabled_fields Fields to update; null = all.
+	 * @param bool          $create_missing Create new products for unknown SKUs.
 	 */
-	public function __construct( $enabled_fields = null ) {
+	public function __construct( $enabled_fields = null, $create_missing = false ) {
 		$this->enabled_fields = $enabled_fields;
+		$this->create_missing = (bool) $create_missing;
 		$this->yoast          = new Boulk_UP_Yoast_Updater( $enabled_fields );
 	}
 
@@ -45,27 +54,50 @@ class Boulk_UP_Product_Updater {
 	 * @return array{status: string, message: string}
 	 */
 	public function process_row( $row, $row_number, $dry_run = false ) {
-		$row = Boulk_UP_Update_Fields::filter_row( $row, $this->enabled_fields );
-
-		$sku = isset( $row['sku'] ) ? trim( $row['sku'] ) : '';
+		$sku = Boulk_UP_Update_Fields::resolve_sku( $row );
 
 		if ( '' === $sku ) {
 			return array(
 				'status'  => 'error',
-				'message' => __( 'Missing SKU.', 'boulk-update-products' ),
+				'message' => __( 'Missing SKU and Automann part number.', 'boulk-update-products' ),
 			);
 		}
+
+		$row['sku'] = $sku;
+		$row        = Boulk_UP_Update_Fields::filter_row( $row, $this->enabled_fields );
+		$row['sku'] = $sku;
 
 		$product_id = wc_get_product_id_by_sku( $sku );
+		$is_new     = false;
 
 		if ( ! $product_id ) {
-			return array(
-				'status'  => 'skipped',
-				'message' => __( 'No product found with this SKU.', 'boulk-update-products' ),
-			);
+			if ( ! $this->create_missing ) {
+				return array(
+					'status'  => 'skipped',
+					'message' => __( 'No product found with this SKU. Enable "Create new products" to add it.', 'boulk-update-products' ),
+				);
+			}
+
+			if ( $dry_run ) {
+				return array(
+					'status'  => 'created',
+					'message' => __( 'Dry run: new product would be created.', 'boulk-update-products' ),
+				);
+			}
+
+			$product = $this->create_product( $sku, $row );
+			if ( ! $product ) {
+				return array(
+					'status'  => 'error',
+					'message' => __( 'Could not create new product.', 'boulk-update-products' ),
+				);
+			}
+
+			$product_id = $product->get_id();
+			$is_new     = true;
 		}
 
-		if ( $dry_run ) {
+		if ( $dry_run && ! $is_new ) {
 			return array(
 				'status'  => 'updated',
 				'message' => __( 'Dry run: product would be updated.', 'boulk-update-products' ),
@@ -82,7 +114,7 @@ class Boulk_UP_Product_Updater {
 
 		$warnings = array();
 		$post_id  = $product->get_id();
-		$changed  = false;
+		$changed  = $is_new;
 
 		try {
 			if ( $this->apply_product_fields( $product, $row, $warnings ) ) {
@@ -106,7 +138,15 @@ class Boulk_UP_Product_Updater {
 				$changed = true;
 			}
 
+			if ( $this->apply_brands( $post_id, $row, $warnings ) ) {
+				$changed = true;
+			}
+
 			if ( $this->apply_cross_sells( $product, $row, $warnings ) ) {
+				$changed = true;
+			}
+
+			if ( $this->apply_meta_fields( $post_id, $row ) ) {
 				$changed = true;
 			}
 
@@ -119,13 +159,18 @@ class Boulk_UP_Product_Updater {
 				);
 			}
 
-			$message = __( 'Product updated successfully.', 'boulk-update-products' );
+			if ( $is_new ) {
+				$message = __( 'New product created and saved.', 'boulk-update-products' );
+			} else {
+				$message = __( 'Product updated successfully.', 'boulk-update-products' );
+			}
+
 			if ( ! empty( $warnings ) ) {
 				$message .= ' ' . implode( ' ', $warnings );
 			}
 
 			return array(
-				'status'  => 'updated',
+				'status'  => $is_new ? 'created' : 'updated',
 				'message' => $message,
 			);
 		} catch ( Exception $e ) {
@@ -134,6 +179,32 @@ class Boulk_UP_Product_Updater {
 				'message' => $e->getMessage(),
 			);
 		}
+	}
+
+	/**
+	 * Create a new simple product.
+	 *
+	 * @param string                $sku  Product SKU.
+	 * @param array<string, string> $row  Row data.
+	 * @return WC_Product_Simple|null
+	 */
+	private function create_product( $sku, $row ) {
+		$product = new WC_Product_Simple();
+		$product->set_sku( $sku );
+
+		$name = $sku;
+		if ( ! empty( $row['title'] ) ) {
+			$name = $row['title'];
+		} elseif ( ! empty( $row['description'] ) ) {
+			$name = wp_trim_words( wp_strip_all_tags( $row['description'] ), 12, '…' );
+		}
+
+		$product->set_name( sanitize_text_field( $name ) );
+		$product->set_status( apply_filters( 'boulk_up_new_product_status', 'publish' ) );
+		$product->set_catalog_visibility( 'visible' );
+		$product->save();
+
+		return $product;
 	}
 
 	/**
@@ -182,7 +253,64 @@ class Boulk_UP_Product_Updater {
 			$changed = true;
 		}
 
+		if ( $this->is_enabled( 'stock_status' ) && ! empty( $row['stock_status'] ) ) {
+			$status = $this->normalize_stock_status( $row['stock_status'] );
+			if ( $status ) {
+				$product->set_stock_status( $status );
+				$product->set_manage_stock( false );
+				$changed = true;
+			}
+		}
+
+		if ( $this->is_enabled( 'weight' ) && '' !== ( $row['weight'] ?? '' ) ) {
+			$product->set_weight( wc_format_decimal( $row['weight'] ) );
+			$changed = true;
+		}
+
+		if ( $this->is_enabled( 'length' ) && '' !== ( $row['length'] ?? '' ) ) {
+			$product->set_length( wc_format_decimal( $row['length'] ) );
+			$changed = true;
+		}
+
+		if ( $this->is_enabled( 'width' ) && '' !== ( $row['width'] ?? '' ) ) {
+			$product->set_width( wc_format_decimal( $row['width'] ) );
+			$changed = true;
+		}
+
+		if ( $this->is_enabled( 'height' ) && '' !== ( $row['height'] ?? '' ) ) {
+			$product->set_height( wc_format_decimal( $row['height'] ) );
+			$changed = true;
+		}
+
 		return $changed;
+	}
+
+	/**
+	 * Normalize stock status from CSV text.
+	 *
+	 * @param string $value Raw value.
+	 * @return string|null instock|outofstock|onbackorder
+	 */
+	private function normalize_stock_status( $value ) {
+		$value = strtolower( trim( $value ) );
+		$value = str_replace( array( ' ', '-' ), '', $value );
+
+		$map = array(
+			'instock'     => 'instock',
+			'in_stock'    => 'instock',
+			'yes'         => 'instock',
+			'1'           => 'instock',
+			'available'   => 'instock',
+			'outofstock'  => 'outofstock',
+			'out_of_stock' => 'outofstock',
+			'no'          => 'outofstock',
+			'0'           => 'outofstock',
+			'unavailable' => 'outofstock',
+			'onbackorder' => 'onbackorder',
+			'backorder'   => 'onbackorder',
+		);
+
+		return isset( $map[ $value ] ) ? $map[ $value ] : null;
 	}
 
 	/**
@@ -203,13 +331,43 @@ class Boulk_UP_Product_Updater {
 		}
 
 		if ( $this->is_enabled( 'slug' ) && ! empty( $row['slug'] ) ) {
-			$slug                       = sanitize_title( $row['slug'] );
-			$post_update['post_name']   = wp_unique_post_slug( $slug, $post_id, get_post_status( $post_id ), 'product', 0 );
-			$changed                    = true;
+			$slug                     = sanitize_title( $row['slug'] );
+			$post_update['post_name'] = wp_unique_post_slug( $slug, $post_id, get_post_status( $post_id ), 'product', 0 );
+			$changed                  = true;
 		}
 
 		if ( count( $post_update ) > 1 ) {
 			wp_update_post( $post_update );
+		}
+
+		return $changed;
+	}
+
+	/**
+	 * Save Automann / distributor custom meta fields.
+	 *
+	 * @param int                   $post_id Post ID.
+	 * @param array<string, string> $row     Row data.
+	 * @return bool
+	 */
+	private function apply_meta_fields( $post_id, $row ) {
+		$meta_map = array(
+			'automann_part_number' => '_boulk_automann_part_number',
+			'dist_price_list'      => '_boulk_dist_price_list',
+			'units'                => '_boulk_units',
+			'pkg_qty'              => '_boulk_pkg_qty',
+			'product_group_id'     => '_boulk_product_group_id',
+			'product_group_desc'   => '_boulk_product_group_desc',
+		);
+
+		$changed = false;
+
+		foreach ( $meta_map as $field => $meta_key ) {
+			if ( ! $this->is_enabled( $field ) || ! isset( $row[ $field ] ) || '' === $row[ $field ] ) {
+				continue;
+			}
+			update_post_meta( $post_id, $meta_key, sanitize_text_field( $row[ $field ] ) );
+			$changed = true;
 		}
 
 		return $changed;
@@ -237,7 +395,7 @@ class Boulk_UP_Product_Updater {
 	}
 
 	/**
-	 * Assign product categories (no auto-create).
+	 * Assign product categories (pipe or comma separated).
 	 *
 	 * @param int                   $post_id  Post ID.
 	 * @param array<string, string> $row      Row data.
@@ -249,15 +407,18 @@ class Boulk_UP_Product_Updater {
 			return false;
 		}
 
-		$parts = array_map( 'trim', explode( '|', $row['categories'] ) );
+		$raw   = $row['categories'];
+		$parts = preg_split( '/[|,]/', $raw );
+		$parts = is_array( $parts ) ? $parts : array( $raw );
 		$terms = array();
 
 		foreach ( $parts as $part ) {
+			$part = trim( $part );
 			if ( '' === $part ) {
 				continue;
 			}
 
-			$term = $this->find_category_term( $part );
+			$term = $this->find_term( $part, 'product_cat' );
 			if ( $term ) {
 				$terms[] = (int) $term->term_id;
 			} else {
@@ -278,18 +439,85 @@ class Boulk_UP_Product_Updater {
 	}
 
 	/**
-	 * Find category by slug then name.
+	 * Assign brand taxonomy or meta.
 	 *
-	 * @param string $identifier Category slug or name.
+	 * @param int                   $post_id  Post ID.
+	 * @param array<string, string> $row      Row data.
+	 * @param string[]              $warnings Warnings.
+	 * @return bool
+	 */
+	private function apply_brands( $post_id, $row, &$warnings ) {
+		if ( ! $this->is_enabled( 'brands' ) || empty( $row['brands'] ) ) {
+			return false;
+		}
+
+		$taxonomy = $this->get_brand_taxonomy();
+		$parts    = preg_split( '/[|,]/', $row['brands'] );
+		$parts    = is_array( $parts ) ? $parts : array( $row['brands'] );
+
+		if ( $taxonomy ) {
+			$term_ids = array();
+			foreach ( $parts as $part ) {
+				$part = trim( $part );
+				if ( '' === $part ) {
+					continue;
+				}
+				$term = $this->find_term( $part, $taxonomy );
+				if ( $term ) {
+					$term_ids[] = (int) $term->term_id;
+				} else {
+					$warnings[] = sprintf(
+						/* translators: %s: brand name */
+						__( 'Brand not found: %s', 'boulk-update-products' ),
+						$part
+					);
+				}
+			}
+			if ( ! empty( $term_ids ) ) {
+				wp_set_object_terms( $post_id, $term_ids, $taxonomy );
+				return true;
+			}
+			return false;
+		}
+
+		update_post_meta( $post_id, '_boulk_brand', sanitize_text_field( $row['brands'] ) );
+		return true;
+	}
+
+	/**
+	 * Detect brand taxonomy on this store.
+	 *
+	 * @return string|null
+	 */
+	private function get_brand_taxonomy() {
+		$candidates = apply_filters(
+			'boulk_up_brand_taxonomies',
+			array( 'product_brand', 'pwb-brand', 'yith_product_brand', 'brand', 'pa_brand' )
+		);
+
+		foreach ( $candidates as $taxonomy ) {
+			if ( taxonomy_exists( $taxonomy ) ) {
+				return $taxonomy;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Find taxonomy term by slug then name.
+	 *
+	 * @param string $identifier Term name or slug.
+	 * @param string $taxonomy   Taxonomy slug.
 	 * @return WP_Term|null
 	 */
-	private function find_category_term( $identifier ) {
-		$slug_term = get_term_by( 'slug', sanitize_title( $identifier ), 'product_cat' );
+	private function find_term( $identifier, $taxonomy ) {
+		$slug_term = get_term_by( 'slug', sanitize_title( $identifier ), $taxonomy );
 		if ( $slug_term && ! is_wp_error( $slug_term ) ) {
 			return $slug_term;
 		}
 
-		$name_term = get_term_by( 'name', $identifier, 'product_cat' );
+		$name_term = get_term_by( 'name', $identifier, $taxonomy );
 		if ( $name_term && ! is_wp_error( $name_term ) ) {
 			return $name_term;
 		}

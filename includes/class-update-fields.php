@@ -13,6 +13,13 @@ defined( 'ABSPATH' ) || exit;
 class Boulk_UP_Update_Fields {
 
 	/**
+	 * Fields always read from CSV for product lookup (not gated by selection).
+	 *
+	 * @var string[]
+	 */
+	public static $lookup_fields = array( 'sku', 'automann_part_number' );
+
+	/**
 	 * Field groups and labels for the admin UI.
 	 *
 	 * @return array<string, array{label: string, fields: array<string, string>}>
@@ -22,18 +29,41 @@ class Boulk_UP_Update_Fields {
 			'product' => array(
 				'label'  => __( 'Product', 'boulk-update-products' ),
 				'fields' => array(
-					'title'             => __( 'Title', 'boulk-update-products' ),
-					'short_description' => __( 'Short description', 'boulk-update-products' ),
-					'description'       => __( 'Full description', 'boulk-update-products' ),
-					'slug'              => __( 'Slug / permalink', 'boulk-update-products' ),
+					'title'                => __( 'Title', 'boulk-update-products' ),
+					'description'          => __( 'Description', 'boulk-update-products' ),
+					'short_description'    => __( 'Short description', 'boulk-update-products' ),
+					'slug'                 => __( 'Slug / permalink', 'boulk-update-products' ),
+					'automann_part_number' => __( 'Automann part number (meta)', 'boulk-update-products' ),
 				),
 			),
 			'pricing' => array(
-				'label'  => __( 'Pricing & tax', 'boulk-update-products' ),
+				'label'  => __( 'Pricing', 'boulk-update-products' ),
 				'fields' => array(
-					'regular_price' => __( 'Regular price', 'boulk-update-products' ),
-					'sale_price'    => __( 'Sale price', 'boulk-update-products' ),
-					'product_tax'   => __( 'Tax class', 'boulk-update-products' ),
+					'regular_price'   => __( 'Updated price', 'boulk-update-products' ),
+					'sale_price'      => __( 'Dist. net price (sale price)', 'boulk-update-products' ),
+					'dist_price_list' => __( 'Dist. price list (saved as meta)', 'boulk-update-products' ),
+					'product_tax'     => __( 'Tax class', 'boulk-update-products' ),
+				),
+			),
+			'inventory' => array(
+				'label'  => __( 'Inventory & shipping', 'boulk-update-products' ),
+				'fields' => array(
+					'stock_status' => __( 'Stock status', 'boulk-update-products' ),
+					'weight'       => __( 'Weight', 'boulk-update-products' ),
+					'width'        => __( 'Width', 'boulk-update-products' ),
+					'length'       => __( 'Length', 'boulk-update-products' ),
+					'height'       => __( 'Height', 'boulk-update-products' ),
+					'units'        => __( 'Units (meta)', 'boulk-update-products' ),
+					'pkg_qty'      => __( 'Pkg/Qty (meta)', 'boulk-update-products' ),
+				),
+			),
+			'catalog' => array(
+				'label'  => __( 'Catalog', 'boulk-update-products' ),
+				'fields' => array(
+					'categories'         => __( 'Master category', 'boulk-update-products' ),
+					'brands'             => __( 'Brands', 'boulk-update-products' ),
+					'product_group_id'   => __( 'Product group ID (meta)', 'boulk-update-products' ),
+					'product_group_desc' => __( 'Product group description (meta)', 'boulk-update-products' ),
 				),
 			),
 			'seo'     => array(
@@ -48,7 +78,6 @@ class Boulk_UP_Update_Fields {
 			'relations' => array(
 				'label'  => __( 'Relations', 'boulk-update-products' ),
 				'fields' => array(
-					'categories'  => __( 'Categories', 'boulk-update-products' ),
 					'cross_sells' => __( 'Cross-sells', 'boulk-update-products' ),
 				),
 			),
@@ -85,19 +114,40 @@ class Boulk_UP_Update_Fields {
 		return apply_filters(
 			'boulk_up_field_presets',
 			array(
-				'all'     => array(
+				'all'      => array(
 					'label'  => __( 'All fields', 'boulk-update-products' ),
 					'fields' => self::get_all_field_keys(),
 				),
-				'prices'  => array(
-					'label'  => __( 'Prices only', 'boulk-update-products' ),
-					'fields' => array( 'regular_price', 'sale_price' ),
+				'automann' => array(
+					'label'  => __( 'Automann feed (typical columns)', 'boulk-update-products' ),
+					'fields' => array(
+						'description',
+						'regular_price',
+						'sale_price',
+						'dist_price_list',
+						'stock_status',
+						'weight',
+						'width',
+						'length',
+						'height',
+						'units',
+						'pkg_qty',
+						'categories',
+						'brands',
+						'product_group_id',
+						'product_group_desc',
+						'automann_part_number',
+					),
 				),
-				'seo'     => array(
+				'prices'   => array(
+					'label'  => __( 'Prices & stock only', 'boulk-update-products' ),
+					'fields' => array( 'regular_price', 'sale_price', 'stock_status' ),
+				),
+				'seo'      => array(
 					'label'  => __( 'SEO only', 'boulk-update-products' ),
 					'fields' => array( 'seo_title', 'meta_description', 'focus_keyphrase', 'meta_keywords' ),
 				),
-				'content' => array(
+				'content'  => array(
 					'label'  => __( 'Content only', 'boulk-update-products' ),
 					'fields' => array( 'title', 'short_description', 'description', 'slug' ),
 				),
@@ -168,8 +218,8 @@ class Boulk_UP_Update_Fields {
 	/**
 	 * Whether a field should be applied (null selection = all fields).
 	 *
-	 * @param string        $field    Field key.
-	 * @param string[]|null $enabled  Enabled fields, or null for all.
+	 * @param string        $field   Field key.
+	 * @param string[]|null $enabled Enabled fields, or null for all.
 	 * @return bool
 	 */
 	public static function is_enabled( $field, $enabled ) {
@@ -180,7 +230,7 @@ class Boulk_UP_Update_Fields {
 	}
 
 	/**
-	 * Strip disabled fields from a CSV row (sku always kept).
+	 * Strip disabled fields from a CSV row (lookup fields always kept).
 	 *
 	 * @param array<string, string> $row     Row data.
 	 * @param string[]|null         $enabled Enabled fields.
@@ -192,8 +242,10 @@ class Boulk_UP_Update_Fields {
 		}
 
 		$filtered = array();
-		if ( isset( $row['sku'] ) ) {
-			$filtered['sku'] = $row['sku'];
+		foreach ( self::$lookup_fields as $field ) {
+			if ( isset( $row[ $field ] ) && '' !== trim( $row[ $field ] ) ) {
+				$filtered[ $field ] = $row[ $field ];
+			}
 		}
 
 		foreach ( $enabled as $field ) {
@@ -203,5 +255,21 @@ class Boulk_UP_Update_Fields {
 		}
 
 		return $filtered;
+	}
+
+	/**
+	 * Resolve WooCommerce SKU from row (sku column, then Automann part number).
+	 *
+	 * @param array<string, string> $row Row data.
+	 * @return string
+	 */
+	public static function resolve_sku( $row ) {
+		if ( ! empty( $row['sku'] ) ) {
+			return trim( $row['sku'] );
+		}
+		if ( ! empty( $row['automann_part_number'] ) ) {
+			return trim( $row['automann_part_number'] );
+		}
+		return '';
 	}
 }

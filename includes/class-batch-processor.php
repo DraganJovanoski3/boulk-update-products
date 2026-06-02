@@ -163,8 +163,9 @@ class Boulk_UP_Batch_Processor {
 			return true;
 		}
 
-		$update_fields = $job->get( 'update_fields', null );
-		$updater       = new Boulk_UP_Product_Updater( $update_fields );
+		$update_fields  = $job->get( 'update_fields', null );
+		$create_missing = (bool) $job->get( 'create_missing', false );
+		$updater        = new Boulk_UP_Product_Updater( $update_fields, $create_missing );
 		$dry_run = (bool) $job->get( 'dry_run', false );
 		$total   = (int) $job->get( 'total_rows', 0 );
 
@@ -185,7 +186,7 @@ class Boulk_UP_Batch_Processor {
 
 			foreach ( $rows as $data_index => $row ) {
 				$row_number = $data_index + 2;
-				$sku        = isset( $row['sku'] ) ? $row['sku'] : '';
+				$sku        = Boulk_UP_Update_Fields::resolve_sku( $row );
 
 				$result = $updater->process_row( $row, $row_number, $dry_run );
 
@@ -194,6 +195,9 @@ class Boulk_UP_Batch_Processor {
 				switch ( $result['status'] ) {
 					case 'updated':
 						$job->increment( 'updated' );
+						break;
+					case 'created':
+						$job->increment( 'created' );
 						break;
 					case 'skipped':
 						$job->increment( 'skipped' );

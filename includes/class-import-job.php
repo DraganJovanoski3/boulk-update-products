@@ -55,10 +55,11 @@ class Boulk_UP_Import_Job {
 	 * @param string $source_file Path to uploaded CSV.
 	 * @param bool   $dry_run     Whether this is a dry run.
 	 * @param string   $profile       Import performance profile.
-	 * @param string[] $update_fields Fields to update (empty = all).
+	 * @param string[] $update_fields  Fields to update (empty = all).
+	 * @param bool     $create_missing Create products when SKU not found.
 	 * @return Boulk_UP_Import_Job|WP_Error
 	 */
-	public static function create( $source_file, $dry_run = false, $profile = '', $update_fields = array() ) {
+	public static function create( $source_file, $dry_run = false, $profile = '', $update_fields = array(), $create_missing = false ) {
 		self::ensure_upload_dir();
 
 		$id = 'job_' . wp_generate_password( 12, false, false );
@@ -91,13 +92,15 @@ class Boulk_UP_Import_Job {
 				'status'        => self::STATUS_QUEUED,
 				'dry_run'       => (bool) $dry_run,
 				'profile'       => $profile,
-				'update_fields' => $update_fields,
-				'file_path'     => $dest,
-				'total_rows'   => $parser->get_total_rows(),
-				'processed'    => 0,
-				'updated'      => 0,
-				'skipped'      => 0,
-				'errors'       => 0,
+				'update_fields'  => $update_fields,
+				'create_missing' => (bool) $create_missing,
+				'file_path'      => $dest,
+				'total_rows'     => $parser->get_total_rows(),
+				'processed'      => 0,
+				'updated'        => 0,
+				'created'        => 0,
+				'skipped'        => 0,
+				'errors'         => 0,
 				'offset'       => 0,
 				'created_at'   => current_time( 'mysql' ),
 				'updated_at'   => current_time( 'mysql' ),

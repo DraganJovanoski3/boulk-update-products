@@ -47,7 +47,7 @@ The **sku** column is required. All other columns are optional.
 | short_description | — | Short description |
 | description | full_description | Full description |
 | slug | — | Product permalink slug |
-| regular_price | price | Regular price |
+| updated_price | regular_price, price | New price (updates WooCommerce regular price) |
 | sale_price | — | Sale price |
 | seo_title | meta_title | Yoast SEO title |
 | meta_description | — | Yoast meta description |
@@ -86,13 +86,16 @@ No. Version 1.0 only updates existing products matched by SKU. Rows with unknown
 
 = Can I update only prices? =
 
-Yes. Include only `sku` and `regular_price` (and/or `sale_price`) columns. Empty cells are ignored.
+Yes. Include only `sku` and `updated_price` (and/or `sale_price`) columns. Empty cells are ignored.
 
 = Does it support Excel files? =
 
 CSV only in v1.0. Export your spreadsheet as CSV from Excel or Google Sheets.
 
 == Changelog ==
+
+= 1.3.1 =
+* CSV column `updated_price` (and aliases) maps to WooCommerce regular price
 
 = 1.3.0 =
 * Errors and skipped rows listed by SKU with reason in admin

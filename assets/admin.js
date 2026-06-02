@@ -26,6 +26,7 @@
 					$row.find('.boulk-progress-fill').css('width', d.percent + '%');
 					$row.find('.boulk-progress-text').text(d.processed + ' / ' + d.total + ' rows');
 					$row.find('.boulk-updated-cell').text(d.updated);
+					$row.find('.boulk-created-cell').text(d.created);
 					$row.find('.boulk-skipped-cell').text(d.skipped);
 					$row.find('.boulk-errors-cell').text(d.errors);
 					$row.attr('data-status', d.status);
@@ -65,6 +66,9 @@
 			d.processed + ' / ' + d.total + ' rows (' + d.percent + '%)'
 		);
 		$container.find('.boulk-stat-updated').text(d.updated);
+		if ($container.find('.boulk-stat-created').length) {
+			$container.find('.boulk-stat-created').text(d.created);
+		}
 		$container.find('.boulk-stat-skipped').text(d.skipped);
 		$container.find('.boulk-stat-errors').text(d.errors);
 
@@ -104,6 +108,7 @@
 					$row.find('.boulk-progress-fill').css('width', d.percent + '%');
 					$row.find('.boulk-progress-text').text(d.processed + ' / ' + d.total + ' rows');
 					$row.find('.boulk-updated-cell').text(d.updated);
+					$row.find('.boulk-created-cell').text(d.created);
 					$row.find('.boulk-skipped-cell').text(d.skipped);
 					$row.find('.boulk-errors-cell').text(d.errors);
 					$row.attr('data-status', d.status);

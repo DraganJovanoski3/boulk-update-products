@@ -18,21 +18,33 @@ class Boulk_UP_CSV_Parser {
 	 * @var array<string, string[]>
 	 */
 	public static $field_aliases = array(
-		'sku'               => array( 'sku' ),
-		'title'             => array( 'title' ),
-		'short_description' => array( 'short_description', 'short description' ),
-		'description'       => array( 'description', 'full_description', 'full description' ),
-		'slug'              => array( 'slug' ),
-		'regular_price'     => array( 'regular_price', 'price' ),
-		'sale_price'        => array( 'sale_price' ),
-		'seo_title'         => array( 'seo_title', 'meta_title' ),
-		'meta_description'  => array( 'meta_description' ),
-		'focus_keyphrase'   => array( 'focus_keyphrase', 'focus_keyword', 'focus keyword' ),
-		'meta_keywords'     => array( 'meta_keywords', 'keyword', 'keywords' ),
-		'product_tax'       => array( 'product_tax', 'tax_class' ),
-		'cross_sells'       => array( 'cross_sells', 'cross_reference', 'cross_sell', 'cross sell' ),
-		'categories'        => array( 'categories', 'product_category', 'product category' ),
-		'alt_text'          => array( 'alt_text', 'image_alt', 'alt text' ),
+		'sku'                  => array( 'sku' ),
+		'automann_part_number' => array( 'automann_part_number', 'automann part number' ),
+		'title'                => array( 'title', 'name' ),
+		'short_description'    => array( 'short_description', 'short description' ),
+		'description'          => array( 'description', 'full_description', 'full description' ),
+		'slug'                 => array( 'slug' ),
+		'regular_price'        => array( 'regular_price', 'updated_price', 'updated price', 'new_price', 'new price' ),
+		'sale_price'           => array( 'sale_price', 'dist_net_price', 'dist net price' ),
+		'dist_price_list'      => array( 'dist_price_list', 'dist price list' ),
+		'seo_title'            => array( 'seo_title', 'meta_title' ),
+		'meta_description'     => array( 'meta_description' ),
+		'focus_keyphrase'      => array( 'focus_keyphrase', 'focus_keyword', 'focus keyword' ),
+		'meta_keywords'        => array( 'meta_keywords', 'keyword', 'keywords' ),
+		'product_tax'          => array( 'product_tax', 'tax_class' ),
+		'cross_sells'          => array( 'cross_sells', 'cross_reference', 'cross_sell', 'cross sell' ),
+		'categories'           => array( 'categories', 'product_category', 'product category', 'master_category', 'master category' ),
+		'brands'               => array( 'brands', 'brand' ),
+		'stock_status'         => array( 'stock_status', 'stock status' ),
+		'weight'               => array( 'weight' ),
+		'width'                => array( 'width' ),
+		'length'               => array( 'length' ),
+		'height'               => array( 'height' ),
+		'units'                => array( 'units', 'unit' ),
+		'pkg_qty'              => array( 'pkg_qty', 'pkg/qty', 'pkg qty' ),
+		'product_group_id'     => array( 'product_group_id', 'product group id' ),
+		'product_group_desc'   => array( 'product_group_desc', 'product group desc', 'product_group_description' ),
+		'alt_text'             => array( 'alt_text', 'image_alt', 'alt text' ),
 	);
 
 	/**
@@ -253,7 +265,10 @@ class Boulk_UP_CSV_Parser {
 	public static function normalize_header( $header ) {
 		$header = preg_replace( '/^\xEF\xBB\xBF/', '', $header );
 		$header = strtolower( trim( $header ) );
-		$header = preg_replace( '/[\s_]+/', '_', $header );
+		$header = str_replace( array( '.', '/', '\\' ), '_', $header );
+		$header = preg_replace( '/[^a-z0-9_]+/', '_', $header );
+		$header = preg_replace( '/_+/', '_', $header );
+		$header = trim( $header, '_' );
 		return $header;
 	}
 
@@ -317,6 +332,16 @@ class Boulk_UP_CSV_Parser {
 	 * @return string[]
 	 */
 	public static function get_sample_headers() {
-		return array_keys( self::$field_aliases );
+		$headers = array_keys( self::$field_aliases );
+
+		return array_map(
+			static function ( $key ) {
+				if ( 'regular_price' === $key ) {
+					return 'updated_price';
+				}
+				return $key;
+			},
+			$headers
+		);
 	}
 }
