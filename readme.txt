@@ -4,7 +4,7 @@ Tags: woocommerce, yoast, bulk, csv, import, seo
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.1
+Stable tag: 1.5.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -94,6 +94,10 @@ Yes. Include only `sku` and `updated_price` (and/or `sale_price`) columns. Empty
 CSV only in v1.0. Export your spreadsheet as CSV from Excel or Google Sheets.
 
 == Changelog ==
+
+= 1.5.2 =
+* CSV import: fix duplicate product creation when the same SKU appears multiple times in one file (SKU is now cached after create; lookup always updates the oldest matching product)
+* CSV import: SKU lookup uses direct DB match (MIN product ID) instead of wc_get_product_id_by_sku only
 
 = 1.5.1 =
 * Product Manager: Duplicate SKU + price scanner — find products with the same SKU and regular price, select copies (keep oldest), bulk delete to trash

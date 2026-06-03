@@ -58,6 +58,7 @@ class Boulk_UP_Product_Updater {
 
 	/**
 	 * Resolve product ID by SKU with in-memory cache.
+	 * Uses oldest product (lowest ID) when duplicate SKUs exist in the store.
 	 *
 	 * @param string $sku SKU.
 	 * @return int
@@ -67,10 +68,46 @@ class Boulk_UP_Product_Updater {
 			return $this->sku_cache[ $sku ];
 		}
 
-		$id = wc_get_product_id_by_sku( $sku );
-		$this->sku_cache[ $sku ] = $id ? (int) $id : 0;
+		$id = $this->lookup_product_id_by_sku( $sku );
+		$this->sku_cache[ $sku ] = $id;
 
 		return $this->sku_cache[ $sku ];
+	}
+
+	/**
+	 * Find product by SKU via database (oldest match wins if duplicates exist).
+	 *
+	 * @param string $sku SKU.
+	 * @return int
+	 */
+	private function lookup_product_id_by_sku( $sku ) {
+		global $wpdb;
+
+		$statuses = array( 'publish', 'draft', 'pending', 'private' );
+		$in       = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+
+		$id = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT MIN(p.ID)
+				FROM {$wpdb->posts} p
+				INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_sku' AND pm.meta_value = %s
+				WHERE p.post_type = 'product'
+				AND p.post_status IN ({$in})",
+				...array_merge( array( $sku ), $statuses )
+			)
+		);
+
+		return $id ? (int) $id : 0;
+	}
+
+	/**
+	 * Remember SKU → product ID after create or resolve (prevents duplicate creates in same import).
+	 *
+	 * @param string $sku        SKU.
+	 * @param int    $product_id Product ID.
+	 */
+	private function remember_sku( $sku, $product_id ) {
+		$this->sku_cache[ $sku ] = (int) $product_id;
 	}
 
 	/**
@@ -115,6 +152,7 @@ class Boulk_UP_Product_Updater {
 			}
 
 			$product_id = $product->get_id();
+			$this->remember_sku( $sku, $product_id );
 			$is_new     = true;
 		}
 

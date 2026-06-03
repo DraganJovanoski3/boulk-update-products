@@ -361,8 +361,8 @@ class Boulk_UP_Admin {
 						<td>
 							<ul class="boulk-sku-rules">
 								<li><?php esc_html_e( 'Empty sku cell → error (row skipped, nothing created).', 'boulk-update-products' ); ?></li>
-								<li><?php esc_html_e( 'sku exists in WooCommerce → update that product.', 'boulk-update-products' ); ?></li>
-								<li><?php esc_html_e( 'sku in CSV but not in store → create a new simple product.', 'boulk-update-products' ); ?></li>
+								<li><?php esc_html_e( 'sku exists in WooCommerce → update that product (same sku repeated in CSV updates the same product, never creates a second copy).', 'boulk-update-products' ); ?></li>
+								<li><?php esc_html_e( 'sku in CSV but not in store → create one new simple product.', 'boulk-update-products' ); ?></li>
 							</ul>
 							<p class="description">
 								<?php esc_html_e( 'Only the sku column is used to match products. Automann Part Number is optional meta, not a substitute for sku.', 'boulk-update-products' ); ?>
