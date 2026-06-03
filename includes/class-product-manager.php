@@ -123,6 +123,242 @@ class Boulk_UP_Product_Manager {
 	}
 
 	/**
+	 * List duplicate product groups (same SKU + regular price).
+	 *
+	 * @param int    $page     Page number (1-based).
+	 * @param int    $per_page Groups per page.
+	 * @param string $search   Filter by SKU or product name.
+	 * @return array<string, mixed>
+	 */
+	public function list_duplicate_groups( $page = 1, $per_page = 50, $search = '' ) {
+		$page     = max( 1, (int) $page );
+		$per_page = max( 10, min( 200, (int) $per_page ) );
+		$search   = trim( $search );
+
+		$total_groups = $this->count_duplicate_groups( $search );
+		$offset       = ( $page - 1 ) * $per_page;
+		$keys         = $this->query_duplicate_group_keys( $per_page, $offset, $search );
+
+		$groups = array();
+		foreach ( $keys as $key ) {
+			$products = $this->get_duplicate_group_products( $key['sku'], $key['regular_price'] );
+			$groups[] = array(
+				'sku'            => $key['sku'],
+				'regular_price'  => $key['regular_price'],
+				'count'          => count( $products ),
+				'keep_id'        => ! empty( $products ) ? (int) $products[0]['id'] : 0,
+				'products'       => $products,
+			);
+		}
+
+		return array(
+			'groups'               => $groups,
+			'total_groups'         => $total_groups,
+			'duplicate_products'   => $this->count_duplicate_products( $search ),
+			'page'                 => $page,
+			'per_page'             => $per_page,
+			'from'                 => $total_groups > 0 ? $offset + 1 : 0,
+			'to'                   => min( $offset + count( $groups ), $total_groups ),
+			'has_more'             => $page * $per_page < $total_groups,
+		);
+	}
+
+	/**
+	 * Product IDs that are duplicate copies (keep lowest ID per SKU + price group).
+	 *
+	 * @param string $search Filter by SKU or name.
+	 * @return array{ids: int[], total: int}
+	 */
+	public function get_duplicate_extra_ids( $search = '' ) {
+		$search = trim( $search );
+		$keys   = $this->query_duplicate_group_keys( 5000, 0, $search );
+		$extra  = array();
+
+		foreach ( $keys as $key ) {
+			$products = $this->get_duplicate_group_products( $key['sku'], $key['regular_price'] );
+			if ( count( $products ) < 2 ) {
+				continue;
+			}
+			array_shift( $products );
+			foreach ( $products as $product ) {
+				$extra[] = (int) $product['id'];
+			}
+		}
+
+		$extra = array_values( array_unique( $extra ) );
+		if ( count( $extra ) > 10000 ) {
+			$extra = array_slice( $extra, 0, 10000 );
+		}
+
+		return array(
+			'ids'   => $extra,
+			'total' => count( $extra ),
+		);
+	}
+
+	/**
+	 * Count duplicate groups (SKU + regular price).
+	 *
+	 * @param string $search Search filter.
+	 * @return int
+	 */
+	private function count_duplicate_groups( $search = '' ) {
+		global $wpdb;
+
+		$sql = $this->build_duplicate_groups_sql( $search, false );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM ({$sql}) AS dup_groups" );
+	}
+
+	/**
+	 * Count products that belong to a duplicate group.
+	 *
+	 * @param string $search Search filter.
+	 * @return int
+	 */
+	private function count_duplicate_products( $search = '' ) {
+		global $wpdb;
+
+		$sql = $this->build_duplicate_groups_sql( $search, false );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return (int) $wpdb->get_var( "SELECT COALESCE(SUM(cnt), 0) FROM ({$sql}) AS dup_groups" );
+	}
+
+	/**
+	 * Fetch duplicate group keys for pagination.
+	 *
+	 * @param int    $limit  Limit.
+	 * @param int    $offset Offset.
+	 * @param string $search Search.
+	 * @return array<int, array{sku: string, regular_price: string, cnt: int}>
+	 */
+	private function query_duplicate_group_keys( $limit, $offset, $search = '' ) {
+		global $wpdb;
+
+		$sql   = $this->build_duplicate_groups_sql( $search, true );
+		$sql  .= $wpdb->prepare( ' LIMIT %d OFFSET %d', $limit, $offset );
+		$rows  = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		return array_map(
+			static function ( $row ) {
+				return array(
+					'sku'            => (string) $row['sku'],
+					'regular_price'  => (string) $row['regular_price'],
+					'cnt'            => (int) $row['cnt'],
+				);
+			},
+			$rows
+		);
+	}
+
+	/**
+	 * Build SQL for duplicate SKU + regular price groups.
+	 *
+	 * @param string $search  Search filter.
+	 * @param bool   $ordered Include ORDER BY.
+	 * @return string
+	 */
+	private function build_duplicate_groups_sql( $search = '', $ordered = true ) {
+		global $wpdb;
+
+		$statuses = array( 'publish', 'draft', 'pending', 'private' );
+		$in       = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+
+		$search_sql = '';
+		$search_arg = trim( $search );
+		if ( '' !== $search_arg ) {
+			$like        = '%' . $wpdb->esc_like( $search_arg ) . '%';
+			$search_sql  = $wpdb->prepare(
+				" AND (sku.meta_value LIKE %s OR p.post_title LIKE %s)",
+				$like,
+				$like
+			);
+		}
+
+		$sql = $wpdb->prepare(
+			"SELECT sku.meta_value AS sku, IFNULL(price.meta_value, '') AS regular_price, COUNT(DISTINCT p.ID) AS cnt
+			FROM {$wpdb->posts} p
+			INNER JOIN {$wpdb->postmeta} sku ON p.ID = sku.post_id AND sku.meta_key = '_sku'
+			LEFT JOIN {$wpdb->postmeta} price ON p.ID = price.post_id AND price.meta_key = '_regular_price'
+			WHERE p.post_type = 'product'
+			AND p.post_status IN ({$in})
+			AND TRIM(sku.meta_value) <> ''
+			{$search_sql}
+			GROUP BY sku.meta_value, IFNULL(price.meta_value, '')
+			HAVING cnt > 1",
+			...$statuses
+		);
+
+		if ( $ordered ) {
+			$sql .= ' ORDER BY cnt DESC, sku ASC';
+		}
+
+		return $sql;
+	}
+
+	/**
+	 * Products in one duplicate group.
+	 *
+	 * @param string $sku           SKU.
+	 * @param string $regular_price Regular price meta value.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function get_duplicate_group_products( $sku, $regular_price ) {
+		global $wpdb;
+
+		$statuses = array( 'publish', 'draft', 'pending', 'private' );
+		$in       = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+
+		$sql = $wpdb->prepare(
+			"SELECT p.ID AS id, p.post_title AS name, p.post_date AS created, p.post_status AS status,
+				IFNULL(sale.meta_value, '') AS sale_price,
+				IFNULL(stock.meta_value, '') AS stock_status
+			FROM {$wpdb->posts} p
+			INNER JOIN {$wpdb->postmeta} sku ON p.ID = sku.post_id AND sku.meta_key = '_sku' AND sku.meta_value = %s
+			LEFT JOIN {$wpdb->postmeta} price ON p.ID = price.post_id AND price.meta_key = '_regular_price'
+			LEFT JOIN {$wpdb->postmeta} sale ON p.ID = sale.post_id AND sale.meta_key = '_sale_price'
+			LEFT JOIN {$wpdb->postmeta} stock ON p.ID = stock.post_id AND stock.meta_key = '_stock_status'
+			WHERE p.post_type = 'product'
+			AND p.post_status IN ({$in})
+			AND IFNULL(price.meta_value, '') = %s
+			ORDER BY p.ID ASC",
+			...array_merge( array( $sku ), $statuses, array( $regular_price ) )
+		);
+
+		$rows = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		$products = array();
+		foreach ( $rows as $row ) {
+			$id = (int) $row['id'];
+			$products[] = array(
+				'id'            => $id,
+				'sku'           => $sku,
+				'name'          => $row['name'],
+				'regular_price' => $regular_price,
+				'sale_price'    => $row['sale_price'],
+				'stock_status'  => $row['stock_status'],
+				'status'        => $row['status'],
+				'created'       => $row['created'],
+				'edit_url'      => get_edit_post_link( $id, 'raw' ),
+				'is_keeper'     => false,
+			);
+		}
+
+		if ( ! empty( $products ) ) {
+			$products[0]['is_keeper'] = true;
+		}
+
+		return $products;
+	}
+
+	/**
 	 * Bulk update products (sync or queue job).
 	 *
 	 * @param int[]                $ids     Product IDs.

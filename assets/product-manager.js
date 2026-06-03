@@ -10,10 +10,18 @@
 		total: 0,
 		selected: {},
 		loading: false,
-		appendMode: false
+		appendMode: false,
+		viewMode: 'all'
+	};
+
+	var dupState = {
+		page: 1,
+		search: '',
+		groups: []
 	};
 
 	var $root, $tbody, $spinner, $range, $capped, $progress;
+	var $dupTbody, $dupSpinner, $dupSummary, $dupRange;
 
 	function init() {
 		$root = $('#boulk-product-manager');
@@ -26,6 +34,15 @@
 		$range = $('#boulk-pm-range');
 		$capped = $('#boulk-pm-capped-notice');
 		$progress = $('#boulk-pm-progress');
+		$dupTbody = $('#boulk-pm-dup-tbody');
+		$dupSpinner = $('#boulk-pm-dup-spinner');
+		$dupSummary = $('#boulk-pm-dup-summary');
+		$dupRange = $('#boulk-pm-dup-range');
+
+		var savedView = localStorage.getItem('boulk_pm_view');
+		if (savedView === 'duplicates') {
+			state.viewMode = 'duplicates';
+		}
 
 		var savedPerPage = localStorage.getItem('boulk_pm_per_page');
 		if (savedPerPage) {
@@ -36,10 +53,94 @@
 		}
 
 		bindEvents();
-		loadProducts(false);
+		setViewMode(state.viewMode, true);
+	}
+
+	function setViewMode(mode, skipSave) {
+		state.viewMode = mode === 'duplicates' ? 'duplicates' : 'all';
+		if (!skipSave) {
+			localStorage.setItem('boulk_pm_view', state.viewMode);
+		}
+
+		$('.boulk-pm-view-tabs .nav-tab').removeClass('nav-tab-active');
+		$('.boulk-pm-view-tabs .nav-tab[data-view="' + state.viewMode + '"]').addClass('nav-tab-active');
+
+		if (state.viewMode === 'duplicates') {
+			$('#boulk-pm-all-panel').hide();
+			$('#boulk-pm-dup-panel').show();
+			loadDuplicates(false);
+		} else {
+			$('#boulk-pm-dup-panel').hide();
+			$('#boulk-pm-all-panel').show();
+			loadProducts(false);
+		}
 	}
 
 	function bindEvents() {
+		$('.boulk-pm-view-tabs .nav-tab').on('click', function (e) {
+			e.preventDefault();
+			var view = $(this).data('view');
+			if (view === state.viewMode) {
+				return;
+			}
+			state.selected = {};
+			updateSelectionCount();
+			updateDupSelectionCount();
+			setViewMode(view, false);
+		});
+
+		$('#boulk-pm-dup-scan').on('click', function () {
+			dupState.search = $('#boulk-pm-dup-search').val().trim();
+			dupState.page = 1;
+			loadDuplicates(false);
+		});
+
+		$('#boulk-pm-dup-search').on('keydown', function (e) {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				$('#boulk-pm-dup-scan').trigger('click');
+			}
+		});
+
+		$('#boulk-pm-dup-prev').on('click', function () {
+			if (dupState.page > 1) {
+				dupState.page--;
+				loadDuplicates(false);
+			}
+		});
+
+		$('#boulk-pm-dup-next').on('click', function () {
+			dupState.page++;
+			loadDuplicates(false);
+		});
+
+		$('#boulk-pm-dup-select-extras').on('click', selectDupExtrasOnPage);
+		$('#boulk-pm-dup-select-all-extras').on('click', selectAllDupExtras);
+		$('#boulk-pm-dup-clear').on('click', clearDupSelection);
+
+		$('#boulk-pm-dup-delete').on('click', function () {
+			var ids = getSelectedIds();
+			if (!ids.length) {
+				window.alert(cfg.i18n.noSelection);
+				return;
+			}
+			if (!window.confirm(cfg.i18n.confirmDelete)) {
+				return;
+			}
+			runBulkDelete(ids);
+		});
+
+		$dupTbody.on('change', '.boulk-pm-row-cb', function () {
+			var id = parseInt($(this).val(), 10);
+			if ($(this).prop('checked')) {
+				state.selected[id] = true;
+			} else {
+				delete state.selected[id];
+			}
+			$(this).closest('tr').toggleClass('is-selected', $(this).prop('checked'));
+			updateDupSelectionCount();
+		});
+
 		$('#boulk-pm-per-page').on('change', function () {
 			var val = $(this).val();
 			localStorage.setItem('boulk_pm_per_page', val);
@@ -141,7 +242,175 @@
 	function setLoading(on) {
 		state.loading = on;
 		$root.toggleClass('is-busy', on);
-		$spinner.toggleClass('is-active', on);
+		if (state.viewMode === 'duplicates') {
+			$dupSpinner.toggleClass('is-active', on);
+		} else {
+			$spinner.toggleClass('is-active', on);
+		}
+	}
+
+	function loadDuplicates() {
+		setLoading(true);
+
+		$.post(cfg.ajaxUrl, {
+			action: 'boulk_up_products_duplicates_list',
+			nonce: cfg.nonce,
+			page: dupState.page,
+			search: dupState.search
+		})
+			.done(function (response) {
+				if (!response.success || !response.data) {
+					window.alert(cfg.i18n.loadError);
+					return;
+				}
+				renderDuplicates(response.data);
+			})
+			.fail(function () {
+				window.alert(cfg.i18n.loadError);
+			})
+			.always(function () {
+				setLoading(false);
+			});
+	}
+
+	function renderDuplicates(data) {
+		dupState.groups = data.groups || [];
+		$dupTbody.empty();
+
+		if (!dupState.groups.length) {
+			$dupTbody.html(
+				'<tr><td colspan="9">' + escHtml(cfg.i18n.noDuplicates) + '</td></tr>'
+			);
+		} else {
+			dupState.groups.forEach(function (group) {
+				var header = cfg.i18n.dupGroupHeader
+					.replace('%1$s', group.sku || '')
+					.replace('%2$s', group.regular_price || '—')
+					.replace('%3$d', group.count || 0);
+				$dupTbody.append(
+					'<tr class="boulk-pm-dup-group"><td colspan="9"><strong>' + escHtml(header) + '</strong></td></tr>'
+				);
+
+				(group.products || []).forEach(function (row) {
+					var checked = !!state.selected[row.id];
+					var keeperBadge = row.is_keeper
+						? ' <span class="boulk-pm-keeper">' + escHtml(cfg.i18n.keeper) + '</span>'
+						: '';
+					$dupTbody.append(
+						'<tr class="' + (checked ? 'is-selected' : '') + (row.is_keeper ? ' is-keeper' : '') + '">' +
+						'<th scope="row" class="check-column">' +
+						'<input type="checkbox" class="boulk-pm-row-cb" value="' + row.id + '"' +
+						(row.is_keeper ? ' disabled' : '') +
+						(checked ? ' checked' : '') + ' /></th>' +
+						'<td>' + row.id + keeperBadge + '</td>' +
+						'<td><code>' + escHtml(row.sku || '') + '</code></td>' +
+						'<td class="col-name" title="' + escAttr(row.name) + '">' + escHtml(row.name) + '</td>' +
+						'<td>' + escHtml(row.regular_price || '') + '</td>' +
+						'<td>' + escHtml(row.sale_price || '') + '</td>' +
+						'<td>' + escHtml(formatDate(row.created)) + '</td>' +
+						'<td>' + escHtml(row.status || '') + '</td>' +
+						'<td><a href="' + escAttr(row.edit_url) + '">' + escHtml('Edit') + '</a></td>' +
+						'</tr>'
+					);
+				});
+			});
+		}
+
+		var summary = cfg.i18n.dupSummary
+			.replace('%1$s', (data.total_groups || 0).toLocaleString())
+			.replace('%2$s', (data.duplicate_products || 0).toLocaleString());
+		$dupSummary.text(summary);
+
+		var rangeText = cfg.i18n.dupShowing
+			.replace('%1$s', data.from || 0)
+			.replace('%2$s', data.to || 0)
+			.replace('%3$s', (data.total_groups || 0).toLocaleString());
+		$dupRange.text(rangeText);
+
+		$('#boulk-pm-dup-prev').toggle(dupState.page > 1);
+		$('#boulk-pm-dup-next').toggle(!!data.has_more);
+		updateDupSelectionCount();
+	}
+
+	function selectDupExtrasOnPage() {
+		dupState.groups.forEach(function (group) {
+			(group.products || []).forEach(function (row) {
+				if (!row.is_keeper) {
+					state.selected[row.id] = true;
+				}
+			});
+		});
+		syncDupCheckboxes();
+	}
+
+	function selectAllDupExtras() {
+		setLoading(true);
+		$('#boulk-pm-dup-selection-count').text(cfg.i18n.selectingAll);
+
+		$.post(cfg.ajaxUrl, {
+			action: 'boulk_up_products_duplicate_extra_ids',
+			nonce: cfg.nonce,
+			search: dupState.search
+		})
+			.done(function (response) {
+				if (!response.success || !response.data || !response.data.ids) {
+					window.alert(cfg.i18n.loadError);
+					return;
+				}
+				response.data.ids.forEach(function (id) {
+					state.selected[id] = true;
+				});
+				syncDupCheckboxes();
+			})
+			.fail(function () {
+				window.alert(cfg.i18n.loadError);
+			})
+			.always(function () {
+				setLoading(false);
+			});
+	}
+
+	function syncDupCheckboxes() {
+		$dupTbody.find('.boulk-pm-row-cb').each(function () {
+			var id = parseInt($(this).val(), 10);
+			var checked = !!state.selected[id];
+			$(this).prop('checked', checked);
+			$(this).closest('tr').toggleClass('is-selected', checked);
+		});
+		updateDupSelectionCount();
+	}
+
+	function clearDupSelection() {
+		state.selected = {};
+		syncDupCheckboxes();
+	}
+
+	function updateDupSelectionCount() {
+		var n = getSelectedIds().length;
+		var text = cfg.i18n.selected.replace('%d', n.toLocaleString());
+		$('#boulk-pm-dup-selection-count').text(text);
+	}
+
+	function formatDate(dateStr) {
+		if (!dateStr) {
+			return '';
+		}
+		var d = new Date(dateStr.replace(' ', 'T'));
+		if (isNaN(d.getTime())) {
+			return dateStr;
+		}
+		return d.toLocaleString();
+	}
+
+	function reloadCurrentView() {
+		state.page = 1;
+		state.chunk = 0;
+		dupState.page = 1;
+		if (state.viewMode === 'duplicates') {
+			loadDuplicates(false);
+		} else {
+			loadProducts(false);
+		}
 	}
 
 	function loadProducts(append) {
@@ -476,10 +745,9 @@
 		showProgress(false);
 		state.selected = {};
 		updateSelectionCount();
+		updateDupSelectionCount();
 		window.alert(message);
-		state.page = 1;
-		state.chunk = 0;
-		loadProducts(false);
+		reloadCurrentView();
 	}
 
 	function escHtml(str) {

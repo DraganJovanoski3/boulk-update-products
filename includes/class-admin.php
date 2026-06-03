@@ -52,6 +52,8 @@ class Boulk_UP_Admin {
 		add_action( 'wp_ajax_boulk_up_products_select_all_ids', array( $this, 'ajax_products_select_all_ids' ) );
 		add_action( 'wp_ajax_boulk_up_products_bulk_update', array( $this, 'ajax_products_bulk_update' ) );
 		add_action( 'wp_ajax_boulk_up_products_bulk_delete', array( $this, 'ajax_products_bulk_delete' ) );
+		add_action( 'wp_ajax_boulk_up_products_duplicates_list', array( $this, 'ajax_products_duplicates_list' ) );
+		add_action( 'wp_ajax_boulk_up_products_duplicate_extra_ids', array( $this, 'ajax_products_duplicate_extra_ids' ) );
 		add_action( 'wp_ajax_boulk_up_bulk_action_status', array( $this, 'ajax_bulk_action_status' ) );
 	}
 
@@ -157,6 +159,18 @@ class Boulk_UP_Admin {
 						'failed'            => __( 'Failed', 'boulk-update-products' ),
 						'noSelection'       => __( 'Select at least one product.', 'boulk-update-products' ),
 						'selectingAll'      => __( 'Loading all matching IDs…', 'boulk-update-products' ),
+						'viewAll'           => __( 'All products', 'boulk-update-products' ),
+						'viewDuplicates'    => __( 'Duplicate SKU + price', 'boulk-update-products' ),
+						'scanDuplicates'    => __( 'Scan for duplicates', 'boulk-update-products' ),
+						'noDuplicates'      => __( 'No duplicate products found (same SKU and regular price).', 'boulk-update-products' ),
+						'dupSummary'        => __( '%1$s duplicate groups · %2$s products involved', 'boulk-update-products' ),
+						'dupShowing'        => __( 'Showing groups %1$s–%2$s of %3$s', 'boulk-update-products' ),
+						'dupGroupHeader'    => __( 'SKU %1$s · Price %2$s · %3$d copies', 'boulk-update-products' ),
+						'keeper'            => __( 'Keep (oldest)', 'boulk-update-products' ),
+						'created'           => __( 'Created', 'boulk-update-products' ),
+						'selectDupExtras'   => __( 'Select duplicate copies (keep oldest)', 'boulk-update-products' ),
+						'selectAllDupExtras'=> __( 'Select all duplicate copies', 'boulk-update-products' ),
+						'deleteDupSelected' => __( 'Delete selected duplicates', 'boulk-update-products' ),
 					),
 				)
 			);
@@ -220,6 +234,17 @@ class Boulk_UP_Admin {
 				}
 				?>
 			</div>
+
+			<p class="boulk-up-credit">
+				<?php
+				printf(
+					/* translators: 1: organization (DDS), 2: author name */
+					esc_html__( 'Made by %1$s · Author: %2$s', 'boulk-update-products' ),
+					esc_html( BOULK_UP_CREDIT_ORG ),
+					esc_html( BOULK_UP_CREDIT_AUTHOR )
+				);
+				?>
+			</p>
 		</div>
 		<?php
 	}
@@ -1019,6 +1044,17 @@ class Boulk_UP_Admin {
 				<?php esc_html_e( 'Browse, search, and bulk-update WooCommerce products without loading the full posts screen. Large selections run in the background.', 'boulk-update-products' ); ?>
 			</p>
 
+			<nav class="boulk-pm-view-tabs nav-tab-wrapper">
+				<a href="#" class="nav-tab nav-tab-active" data-view="all"><?php esc_html_e( 'All products', 'boulk-update-products' ); ?></a>
+				<a href="#" class="nav-tab" data-view="duplicates"><?php esc_html_e( 'Duplicate SKU + price', 'boulk-update-products' ); ?></a>
+			</nav>
+
+			<div class="boulk-pm-progress" id="boulk-pm-progress" style="display:none;">
+				<div class="boulk-progress-bar"><div class="boulk-progress-fill" style="width:0%"></div></div>
+				<p class="boulk-progress-text"></p>
+			</div>
+
+			<div id="boulk-pm-all-panel">
 			<div class="boulk-pm-controls">
 				<label>
 					<?php esc_html_e( 'Rows per load', 'boulk-update-products' ); ?>
@@ -1052,11 +1088,6 @@ class Boulk_UP_Admin {
 			</div>
 			<div class="notice notice-warning inline boulk-pm-capped-notice" id="boulk-pm-capped-notice" style="display:none;"></div>
 
-			<div class="boulk-pm-progress" id="boulk-pm-progress" style="display:none;">
-				<div class="boulk-progress-bar"><div class="boulk-progress-fill" style="width:0%"></div></div>
-				<p class="boulk-progress-text"></p>
-			</div>
-
 			<div class="boulk-pm-table-wrap">
 				<table class="widefat striped boulk-pm-table">
 					<thead>
@@ -1081,6 +1112,60 @@ class Boulk_UP_Admin {
 				<button type="button" class="button" id="boulk-pm-next" style="display:none;"><?php esc_html_e( 'Next page', 'boulk-update-products' ); ?></button>
 				<button type="button" class="button" id="boulk-pm-next-chunk" style="display:none;"><?php esc_html_e( 'Load next chunk', 'boulk-update-products' ); ?></button>
 			</p>
+			</div>
+
+			<div id="boulk-pm-dup-panel" style="display:none;">
+				<p class="description">
+					<?php esc_html_e( 'Find products created with the same SKU and the same regular price. The oldest product (lowest ID) is marked to keep; select copies and move them to trash.', 'boulk-update-products' ); ?>
+				</p>
+
+				<div class="boulk-pm-controls">
+					<label class="boulk-pm-search-wrap">
+						<?php esc_html_e( 'Filter by SKU or name', 'boulk-update-products' ); ?>
+						<input type="search" id="boulk-pm-dup-search" class="regular-text" placeholder="<?php esc_attr_e( 'Search…', 'boulk-update-products' ); ?>" />
+					</label>
+					<button type="button" class="button button-primary" id="boulk-pm-dup-scan"><?php esc_html_e( 'Scan for duplicates', 'boulk-update-products' ); ?></button>
+				</div>
+
+				<div class="boulk-pm-toolbar boulk-pm-dup-toolbar">
+					<span class="boulk-pm-selection-count" id="boulk-pm-dup-selection-count">0 <?php esc_html_e( 'selected', 'boulk-update-products' ); ?></span>
+					<button type="button" class="button button-small" id="boulk-pm-dup-select-extras"><?php esc_html_e( 'Select duplicate copies (keep oldest)', 'boulk-update-products' ); ?></button>
+					<button type="button" class="button button-small" id="boulk-pm-dup-select-all-extras"><?php esc_html_e( 'Select all duplicate copies', 'boulk-update-products' ); ?></button>
+					<button type="button" class="button button-small" id="boulk-pm-dup-clear"><?php esc_html_e( 'Clear selection', 'boulk-update-products' ); ?></button>
+					<span class="boulk-pm-toolbar-spacer"></span>
+					<button type="button" class="button button-link-delete" id="boulk-pm-dup-delete"><?php esc_html_e( 'Delete selected duplicates', 'boulk-update-products' ); ?></button>
+				</div>
+
+				<div class="boulk-pm-status">
+					<span class="spinner" id="boulk-pm-dup-spinner"></span>
+					<span id="boulk-pm-dup-summary"></span>
+					<span id="boulk-pm-dup-range"></span>
+				</div>
+
+				<div class="boulk-pm-table-wrap">
+					<table class="widefat striped boulk-pm-table boulk-pm-dup-table">
+						<thead>
+							<tr>
+								<td class="check-column"></td>
+								<th><?php esc_html_e( 'ID', 'boulk-update-products' ); ?></th>
+								<th><?php esc_html_e( 'SKU', 'boulk-update-products' ); ?></th>
+								<th><?php esc_html_e( 'Name', 'boulk-update-products' ); ?></th>
+								<th><?php esc_html_e( 'Regular price', 'boulk-update-products' ); ?></th>
+								<th><?php esc_html_e( 'Sale price', 'boulk-update-products' ); ?></th>
+								<th><?php esc_html_e( 'Created', 'boulk-update-products' ); ?></th>
+								<th><?php esc_html_e( 'Status', 'boulk-update-products' ); ?></th>
+								<th><?php esc_html_e( 'Edit', 'boulk-update-products' ); ?></th>
+							</tr>
+						</thead>
+						<tbody id="boulk-pm-dup-tbody"></tbody>
+					</table>
+				</div>
+
+				<p class="boulk-pm-pagination">
+					<button type="button" class="button" id="boulk-pm-dup-prev" style="display:none;"><?php esc_html_e( 'Previous page', 'boulk-update-products' ); ?></button>
+					<button type="button" class="button" id="boulk-pm-dup-next" style="display:none;"><?php esc_html_e( 'Next page', 'boulk-update-products' ); ?></button>
+				</p>
+			</div>
 		</div>
 
 		<div id="boulk-pm-modal" class="boulk-pm-modal" style="display:none;" role="dialog" aria-modal="true">
@@ -1210,6 +1295,30 @@ class Boulk_UP_Admin {
 		}
 
 		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX: list duplicate SKU + price groups.
+	 */
+	public function ajax_products_duplicates_list() {
+		$this->verify_products_ajax();
+
+		$page   = isset( $_POST['page'] ) ? max( 1, (int) $_POST['page'] ) : 1;
+		$search = isset( $_POST['search'] ) ? sanitize_text_field( wp_unslash( $_POST['search'] ) ) : '';
+
+		$manager = new Boulk_UP_Product_Manager();
+		wp_send_json_success( $manager->list_duplicate_groups( $page, 50, $search ) );
+	}
+
+	/**
+	 * AJAX: IDs of duplicate copies (keep oldest per group).
+	 */
+	public function ajax_products_duplicate_extra_ids() {
+		$this->verify_products_ajax();
+
+		$search  = isset( $_POST['search'] ) ? sanitize_text_field( wp_unslash( $_POST['search'] ) ) : '';
+		$manager = new Boulk_UP_Product_Manager();
+		wp_send_json_success( $manager->get_duplicate_extra_ids( $search ) );
 	}
 
 	/**

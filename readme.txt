@@ -1,10 +1,10 @@
 === Boulk Bulk Product Update ===
-Contributors: boulk
+Contributors: draganjovanoski3
 Tags: woocommerce, yoast, bulk, csv, import, seo
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.0
+Stable tag: 1.5.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -94,6 +94,9 @@ Yes. Include only `sku` and `updated_price` (and/or `sale_price`) columns. Empty
 CSV only in v1.0. Export your spreadsheet as CSV from Excel or Google Sheets.
 
 == Changelog ==
+
+= 1.5.1 =
+* Product Manager: Duplicate SKU + price scanner — find products with the same SKU and regular price, select copies (keep oldest), bulk delete to trash
 
 = 1.5.0 =
 * Product Manager tab: list products (1,000–10,000 rows per load or chunked “all”), search by SKU/name, select page or all matching, bulk update regular/sale price and stock status, bulk move to trash
