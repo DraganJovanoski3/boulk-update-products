@@ -12,10 +12,11 @@ defined( 'ABSPATH' ) || exit;
  */
 class Boulk_UP_Import_Config {
 
-	const PROFILE_QUICK    = 'quick';
-	const PROFILE_STANDARD = 'standard';
-	const PROFILE_LARGE    = 'large';
-	const PROFILE_MAX      = 'max';
+	const PROFILE_QUICK      = 'quick';
+	const PROFILE_STANDARD   = 'standard';
+	const PROFILE_AUTO_QUEUE = 'auto_queue';
+	const PROFILE_LARGE      = 'large';
+	const PROFILE_MAX        = 'max';
 
 	/**
 	 * Default profile when row count is unknown.
@@ -25,7 +26,7 @@ class Boulk_UP_Import_Config {
 	/**
 	 * Get profile definitions.
 	 *
-	 * @return array<string, array{batch_size: int, time_limit: int, schedule_delay: int, label: string, description: string}>
+	 * @return array<string, array{batch_size: int, time_limit: int, schedule_delay: int, chain_ticks: int, rows_per_run: int, label: string, description: string}>
 	 */
 	public static function get_profiles() {
 		$profiles = array(
@@ -33,6 +34,8 @@ class Boulk_UP_Import_Config {
 				'batch_size'     => 100,
 				'time_limit'     => 60,
 				'schedule_delay' => 0,
+				'chain_ticks'    => 8,
+				'rows_per_run'   => 0,
 				'label'          => __( 'Quick (under ~1,000 rows)', 'boulk-update-products' ),
 				'description'    => __( 'Best for small/medium files. Finishes in one or few runs.', 'boulk-update-products' ),
 			),
@@ -40,13 +43,26 @@ class Boulk_UP_Import_Config {
 				'batch_size'     => 150,
 				'time_limit'     => 45,
 				'schedule_delay' => 0,
+				'chain_ticks'    => 8,
+				'rows_per_run'   => 0,
 				'label'          => __( 'Standard (up to ~5,000 rows)', 'boulk-update-products' ),
 				'description'    => __( 'Balanced speed for medium catalogs.', 'boulk-update-products' ),
+			),
+			self::PROFILE_AUTO_QUEUE => array(
+				'batch_size'     => 250,
+				'time_limit'     => 120,
+				'schedule_delay' => 2,
+				'chain_ticks'    => 1,
+				'rows_per_run'   => 1000,
+				'label'          => __( 'Auto-queue (1,000 per run — 20k–30k files)', 'boulk-update-products' ),
+				'description'    => __( 'CSV is saved on the server. Each background run updates 1,000 products, then automatically continues until the file is finished.', 'boulk-update-products' ),
 			),
 			self::PROFILE_LARGE => array(
 				'batch_size'     => 250,
 				'time_limit'     => 90,
 				'schedule_delay' => 0,
+				'chain_ticks'    => 8,
+				'rows_per_run'   => 0,
 				'label'          => __( 'Large (up to ~10,000 rows)', 'boulk-update-products' ),
 				'description'    => __( 'For large monthly updates.', 'boulk-update-products' ),
 			),
@@ -54,6 +70,8 @@ class Boulk_UP_Import_Config {
 				'batch_size'     => 300,
 				'time_limit'     => 120,
 				'schedule_delay' => 0,
+				'chain_ticks'    => 8,
+				'rows_per_run'   => 0,
 				'label'          => __( 'Maximum (50,000+ rows)', 'boulk-update-products' ),
 				'description'    => __( 'Longest run per tick; use during low traffic.', 'boulk-update-products' ),
 			),
@@ -75,6 +93,11 @@ class Boulk_UP_Import_Config {
 		if ( $total_rows <= 500 ) {
 			return self::PROFILE_QUICK;
 		}
+
+		if ( $total_rows > 2000 ) {
+			return self::PROFILE_AUTO_QUEUE;
+		}
+
 		if ( $total_rows <= 2000 && in_array( $profile, array( self::PROFILE_LARGE, self::PROFILE_MAX ), true ) ) {
 			return self::PROFILE_STANDARD;
 		}
@@ -106,7 +129,7 @@ class Boulk_UP_Import_Config {
 	 * Get settings for a profile.
 	 *
 	 * @param string $profile Profile slug.
-	 * @return array{batch_size: int, time_limit: int, schedule_delay: int, label: string, description: string}
+	 * @return array{batch_size: int, time_limit: int, schedule_delay: int, chain_ticks: int, rows_per_run: int, label: string, description: string}
 	 */
 	public static function get_profile_settings( $profile ) {
 		$profiles = self::get_profiles();
@@ -155,12 +178,33 @@ class Boulk_UP_Import_Config {
 	}
 
 	/**
-	 * Max extra ticks to run back-to-back in one HTTP request.
+	 * Max rows processed per scheduler tick (0 = time-based only).
 	 *
+	 * @param Boulk_UP_Import_Job|null $job Job instance.
 	 * @return int
 	 */
-	public static function get_chain_ticks() {
-		return max( 1, (int) apply_filters( 'boulk_up_chain_ticks', 8 ) );
+	public static function get_rows_per_run( $job = null ) {
+		$settings = self::get_job_settings( $job );
+		$rows     = isset( $settings['rows_per_run'] ) ? (int) $settings['rows_per_run'] : 0;
+
+		return max( 0, (int) apply_filters( 'boulk_up_rows_per_run', $rows, $job ) );
+	}
+
+	/**
+	 * Max extra ticks to run back-to-back in one HTTP request.
+	 *
+	 * @param Boulk_UP_Import_Job|null $job Job instance.
+	 * @return int
+	 */
+	public static function get_chain_ticks( $job = null ) {
+		if ( $job ) {
+			$settings = self::get_job_settings( $job );
+			$chains   = isset( $settings['chain_ticks'] ) ? (int) $settings['chain_ticks'] : 8;
+		} else {
+			$chains = 8;
+		}
+
+		return max( 1, (int) apply_filters( 'boulk_up_chain_ticks', $chains, $job ) );
 	}
 
 	/**
@@ -176,7 +220,7 @@ class Boulk_UP_Import_Config {
 	 * Settings from job or default profile.
 	 *
 	 * @param Boulk_UP_Import_Job|null $job Job.
-	 * @return array{batch_size: int, time_limit: int, schedule_delay: int, label: string, description: string}
+	 * @return array{batch_size: int, time_limit: int, schedule_delay: int, chain_ticks: int, rows_per_run: int, label: string, description: string}
 	 */
 	private static function get_job_settings( $job ) {
 		if ( $job ) {

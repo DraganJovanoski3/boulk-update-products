@@ -585,4 +585,43 @@ class Boulk_UP_Import_Job {
 		}
 		return min( 100, round( ( (int) $this->get( 'processed', 0 ) / $total ) * 100, 1 ) );
 	}
+
+	/**
+	 * Auto-queue run progress (batch X of Y).
+	 *
+	 * @return array{run_current: int, run_total: int, rows_per_run: int}
+	 */
+	public function get_run_progress() {
+		$rows_per_run = Boulk_UP_Import_Config::get_rows_per_run( $this );
+		$total        = (int) $this->get( 'total_rows', 0 );
+		$processed    = (int) $this->get( 'processed', 0 );
+
+		if ( $rows_per_run <= 0 || $total <= 0 ) {
+			return array(
+				'run_current'  => 0,
+				'run_total'    => 0,
+				'rows_per_run' => 0,
+			);
+		}
+
+		$run_total   = (int) ceil( $total / $rows_per_run );
+		$run_current = $processed > 0 ? (int) ceil( $processed / $rows_per_run ) : 1;
+		$run_current = min( $run_total, max( 1, $run_current ) );
+
+		return array(
+			'run_current'  => $run_current,
+			'run_total'    => $run_total,
+			'rows_per_run' => $rows_per_run,
+		);
+	}
+
+	/**
+	 * Stored CSV filename for this job.
+	 *
+	 * @return string
+	 */
+	public function get_stored_filename() {
+		$path = $this->get( 'file_path', '' );
+		return $path ? basename( $path ) : '';
+	}
 }

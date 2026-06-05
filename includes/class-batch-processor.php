@@ -77,7 +77,8 @@ class Boulk_UP_Batch_Processor {
 	 */
 	private function run_inline( $job_id, $max_seconds ) {
 		$started = time();
-		$chains  = Boulk_UP_Import_Config::get_chain_ticks() + 4;
+		$job     = Boulk_UP_Import_Job::load( $job_id );
+		$chains  = $job ? Boulk_UP_Import_Config::get_chain_ticks( $job ) + 4 : 12;
 
 		while ( ( time() - $started ) < $max_seconds && $chains > 0 ) {
 			$job = Boulk_UP_Import_Job::load( $job_id );
@@ -167,7 +168,8 @@ class Boulk_UP_Batch_Processor {
 			@set_time_limit( 0 );
 		}
 
-		$chains = Boulk_UP_Import_Config::get_chain_ticks();
+		$job    = Boulk_UP_Import_Job::load( $job_id );
+		$chains = $job ? Boulk_UP_Import_Config::get_chain_ticks( $job ) : Boulk_UP_Import_Config::get_chain_ticks();
 		$done   = false;
 
 		for ( $i = 0; $i < $chains; $i++ ) {
@@ -253,10 +255,12 @@ class Boulk_UP_Batch_Processor {
 			$job->set( 'csv_delimiter', $parser->get_delimiter() );
 		}
 
-		$time_limit     = Boulk_UP_Import_Config::get_time_limit( $job );
-		$batch_size     = Boulk_UP_Import_Config::get_batch_size( $job );
-		$started        = time();
-		$update_fields  = $job->get( 'update_fields', null );
+		$time_limit    = Boulk_UP_Import_Config::get_time_limit( $job );
+		$batch_size    = Boulk_UP_Import_Config::get_batch_size( $job );
+		$rows_per_run  = Boulk_UP_Import_Config::get_rows_per_run( $job );
+		$started       = time();
+		$rows_this_tick = 0;
+		$update_fields = $job->get( 'update_fields', null );
 		$updater = new Boulk_UP_Product_Updater( $update_fields );
 		$dry_run        = (bool) $job->get( 'dry_run', false );
 		$total          = (int) $job->get( 'total_rows', 0 );
@@ -273,8 +277,14 @@ class Boulk_UP_Batch_Processor {
 				return true;
 			}
 
-			$chunk = $parser->read_chunk( $file_offset, $row_index, $batch_size );
-			$rows  = $chunk['rows'];
+			if ( $rows_per_run > 0 && $rows_this_tick >= $rows_per_run ) {
+				$job->save();
+				return false;
+			}
+
+			$chunk_limit = $rows_per_run > 0 ? 1 : $batch_size;
+			$chunk       = $parser->read_chunk( $file_offset, $row_index, $chunk_limit );
+			$rows        = $chunk['rows'];
 
 			if ( empty( $rows ) ) {
 				$job->save();
@@ -311,6 +321,17 @@ class Boulk_UP_Batch_Processor {
 				}
 
 				$job->increment( 'processed' );
+				++$rows_this_tick;
+
+				if ( $rows_per_run > 0 && $rows_this_tick >= $rows_per_run ) {
+					$file_offset = $chunk['next_offset'];
+					$row_index   = $chunk['next_row_index'];
+					$job->set( 'file_offset', $file_offset );
+					$job->set( 'row_index', $row_index );
+					$job->save();
+
+					return $row_index >= $total;
+				}
 			}
 
 			$file_offset = $chunk['next_offset'];

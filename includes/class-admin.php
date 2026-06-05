@@ -436,14 +436,7 @@ class Boulk_UP_Admin {
 										<div class="boulk-progress-fill" style="width:<?php echo esc_attr( $job->get_progress_percent() ); ?>%"></div>
 									</div>
 									<span class="boulk-progress-text">
-										<?php
-										printf(
-											/* translators: 1: processed count, 2: total count */
-											esc_html__( '%1$d / %2$d rows', 'boulk-update-products' ),
-											(int) $job->get( 'processed', 0 ),
-											(int) $job->get( 'total_rows', 0 )
-										);
-										?>
+										<?php echo esc_html( $this->format_job_progress_text( $job ) ); ?>
 									</span>
 								</td>
 								<td class="boulk-updated-cell"><?php echo esc_html( (string) $job->get( 'updated', 0 ) ); ?></td>
@@ -575,11 +568,16 @@ class Boulk_UP_Admin {
 	 * @param Boulk_UP_Import_Job $job Job.
 	 */
 	private function render_job_progress( $job ) {
-		$finished = $job->is_finished();
+		$finished     = $job->is_finished();
+		$run_progress = $job->get_run_progress();
+		$stored_file  = $job->get_stored_filename();
 		?>
 		<div class="boulk-up-panel boulk-up-job-detail" id="boulk-job-progress" data-job-id="<?php echo esc_attr( $job->get_id() ); ?>" data-finished="<?php echo $finished ? '1' : '0'; ?>">
 			<h2><?php esc_html_e( 'Import Progress', 'boulk-update-products' ); ?></h2>
 			<p><strong><?php esc_html_e( 'Job:', 'boulk-update-products' ); ?></strong> <code><?php echo esc_html( $job->get_id() ); ?></code></p>
+			<?php if ( $stored_file ) : ?>
+				<p><strong><?php esc_html_e( 'Stored file:', 'boulk-update-products' ); ?></strong> <code><?php echo esc_html( $stored_file ); ?></code></p>
+			<?php endif; ?>
 			<p><strong><?php esc_html_e( 'Updating:', 'boulk-update-products' ); ?></strong> <?php echo esc_html( Boulk_UP_Update_Fields::format_selection_label( $job->get( 'update_fields', null ) ) ); ?></p>
 
 			<div class="boulk-progress-bar boulk-progress-large" data-percent="<?php echo esc_attr( $job->get_progress_percent() ); ?>">
@@ -589,16 +587,22 @@ class Boulk_UP_Admin {
 				<span class="boulk-status boulk-status-<?php echo esc_attr( $job->get( 'status' ) ); ?>"><?php echo esc_html( $this->status_label( $job->get( 'status' ) ) ); ?></span>
 				—
 				<span class="boulk-progress-text">
-					<?php
-					printf(
-						esc_html__( '%1$d / %2$d rows (%3$s%%)', 'boulk-update-products' ),
-						(int) $job->get( 'processed', 0 ),
-						(int) $job->get( 'total_rows', 0 ),
-						esc_html( (string) $job->get_progress_percent() )
-					);
-					?>
+					<?php echo esc_html( $this->format_job_progress_text( $job ) ); ?>
 				</span>
 			</p>
+			<?php if ( $run_progress['run_total'] > 0 ) : ?>
+				<p class="description boulk-run-progress">
+					<?php
+					printf(
+						/* translators: 1: current run, 2: total runs, 3: rows per run */
+						esc_html__( 'Auto-queue: run %1$d of %2$d (%3$s products per background run).', 'boulk-update-products' ),
+						(int) $run_progress['run_current'],
+						(int) $run_progress['run_total'],
+						number_format_i18n( (int) $run_progress['rows_per_run'] )
+					);
+					?>
+				</p>
+			<?php endif; ?>
 
 			<ul class="boulk-stats">
 				<li><strong><?php esc_html_e( 'Updated:', 'boulk-update-products' ); ?></strong> <span class="boulk-stat-updated"><?php echo esc_html( (string) $job->get( 'updated', 0 ) ); ?></span></li>
@@ -772,6 +776,39 @@ class Boulk_UP_Admin {
 				'admin-post.php?action=boulk_up_download_log&job_id=' . rawurlencode( $job_id ) . '&log_type=' . rawurlencode( $log_type )
 			),
 			'boulk_up_download_log'
+		);
+	}
+
+	/**
+	 * Format progress line for import job display.
+	 *
+	 * @param Boulk_UP_Import_Job $job Job.
+	 * @return string
+	 */
+	private function format_job_progress_text( $job ) {
+		$run_progress = $job->get_run_progress();
+		$processed    = (int) $job->get( 'processed', 0 );
+		$total        = (int) $job->get( 'total_rows', 0 );
+		$percent      = $job->get_progress_percent();
+
+		if ( $run_progress['run_total'] > 0 ) {
+			return sprintf(
+				/* translators: 1: current run, 2: total runs, 3: processed rows, 4: total rows, 5: percent */
+				__( 'Run %1$d of %2$d — %3$s / %4$s rows (%5$s%%)', 'boulk-update-products' ),
+				(int) $run_progress['run_current'],
+				(int) $run_progress['run_total'],
+				number_format_i18n( $processed ),
+				number_format_i18n( $total ),
+				$percent
+			);
+		}
+
+		return sprintf(
+			/* translators: 1: processed rows, 2: total rows, 3: percent */
+			__( '%1$s / %2$s rows (%3$s%%)', 'boulk-update-products' ),
+			number_format_i18n( $processed ),
+			number_format_i18n( $total ),
+			$percent
 		);
 	}
 
@@ -1354,6 +1391,8 @@ class Boulk_UP_Admin {
 			wp_send_json_error( array( 'message' => 'Job not found' ), 404 );
 		}
 
+		$run_progress = $job->get_run_progress();
+
 		wp_send_json_success(
 			array(
 				'id'        => $job->get_id(),
@@ -1367,6 +1406,11 @@ class Boulk_UP_Admin {
 				'errors'    => (int) $job->get( 'errors', 0 ),
 				'percent'   => $job->get_progress_percent(),
 				'finished'  => $job->is_finished(),
+				'runCurrent'  => (int) $run_progress['run_current'],
+				'runTotal'    => (int) $run_progress['run_total'],
+				'rowsPerRun'  => (int) $run_progress['rows_per_run'],
+				'storedFile'  => $job->get_stored_filename(),
+				'progressText' => $this->format_job_progress_text( $job ),
 				'logEntries'      => array_reverse( array_slice( $job->get( 'log_entries', array() ), -20 ) ),
 				'errorEntries'    => array_reverse( $job->get_cached_issues( 'error', 100 ) ),
 				'skippedEntries'  => array_reverse( $job->get_cached_issues( 'skipped', 100 ) ),

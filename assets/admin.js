@@ -24,7 +24,9 @@
 				if ($row.length) {
 					$row.find('.boulk-status').attr('class', 'boulk-status boulk-status-' + d.status).text(d.statusLabel);
 					$row.find('.boulk-progress-fill').css('width', d.percent + '%');
-					$row.find('.boulk-progress-text').text(d.processed + ' / ' + d.total + ' rows');
+					$row.find('.boulk-progress-text').text(
+						d.progressText || (d.processed + ' / ' + d.total + ' rows')
+					);
 					$row.find('.boulk-updated-cell').text(d.updated);
 					$row.find('.boulk-created-cell').text(d.created);
 					$row.find('.boulk-skipped-cell').text(d.skipped);
@@ -63,8 +65,25 @@
 		$container.find('.boulk-progress-fill').css('width', d.percent + '%');
 		$container.find('.boulk-status').attr('class', 'boulk-status boulk-status-' + d.status).text(d.statusLabel);
 		$container.find('.boulk-progress-text').text(
-			d.processed + ' / ' + d.total + ' rows (' + d.percent + '%)'
+			d.progressText || (d.processed + ' / ' + d.total + ' rows (' + d.percent + '%)')
 		);
+
+		var $runProgress = $container.find('.boulk-run-progress');
+		if (d.runTotal > 0) {
+			if (!$runProgress.length) {
+				$container.find('.boulk-progress-summary').after(
+					'<p class="description boulk-run-progress"></p>'
+				);
+				$runProgress = $container.find('.boulk-run-progress');
+			}
+			$runProgress.text(
+				'Auto-queue: run ' + d.runCurrent + ' of ' + d.runTotal +
+				' (' + d.rowsPerRun.toLocaleString() + ' products per background run).'
+			).show();
+		} else if ($runProgress.length) {
+			$runProgress.hide();
+		}
+
 		$container.find('.boulk-stat-updated').text(d.updated);
 		if ($container.find('.boulk-stat-created').length) {
 			$container.find('.boulk-stat-created').text(d.created);
@@ -106,7 +125,9 @@
 					var d = response.data;
 					$row.find('.boulk-status').attr('class', 'boulk-status boulk-status-' + d.status).text(d.statusLabel);
 					$row.find('.boulk-progress-fill').css('width', d.percent + '%');
-					$row.find('.boulk-progress-text').text(d.processed + ' / ' + d.total + ' rows');
+					$row.find('.boulk-progress-text').text(
+						d.progressText || (d.processed + ' / ' + d.total + ' rows')
+					);
 					$row.find('.boulk-updated-cell').text(d.updated);
 					$row.find('.boulk-created-cell').text(d.created);
 					$row.find('.boulk-skipped-cell').text(d.skipped);

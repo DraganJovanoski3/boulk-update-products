@@ -3,7 +3,7 @@
  * Plugin Name:       Boulk Bulk Product Update
  * Plugin URI:        https://github.com/boulk/bulk-update-products
  * Description:       Bulk update WooCommerce products and Yoast SEO fields from CSV files. Matched by SKU with batched background processing.
- * Version:           1.5.2
+ * Version:           1.6.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Dragan Jovanoski
@@ -17,7 +17,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BOULK_UP_VERSION', '1.5.2' );
+define( 'BOULK_UP_VERSION', '1.6.0' );
 define( 'BOULK_UP_CREDIT_ORG', 'DDS' );
 define( 'BOULK_UP_CREDIT_AUTHOR', 'Dragan Jovanoski' );
 define( 'BOULK_UP_BULK_HOOK', 'boulk_up_process_bulk_action' );

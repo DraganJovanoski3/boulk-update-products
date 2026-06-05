@@ -4,7 +4,7 @@ Tags: woocommerce, yoast, bulk, csv, import, seo
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.2
+Stable tag: 1.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -69,11 +69,11 @@ Download a sample CSV from **WooCommerce → Bulk Product Update → Documentati
 
 == Large imports (10,000–50,000+ products) ==
 
-* Choose **Import size → Large** for ~10,000 rows per run (default)
-* Choose **Maximum** for 50,000+ row files on powerful hosting
+* Choose **Import size → Auto-queue (1,000 per run)** for 20k–30k spreadsheets (recommended; selected automatically for files over 2,000 rows)
+* The CSV stays saved on the server; each background run updates 1,000 products, then the next run starts automatically
+* Progress shows **Run X of Y** until the full file is finished
 * Run imports during low-traffic periods
 * Always run a **dry run** first to validate SKUs
-* Processing runs in background; each tick processes many rows until a time limit is reached
 * Monitor progress under Import History
 * If imports stall, check **WooCommerce → Status → Scheduled Actions**
 * Increase PHP `max_execution_time` and memory limits on the server if needed
@@ -94,6 +94,10 @@ Yes. Include only `sku` and `updated_price` (and/or `sale_price`) columns. Empty
 CSV only in v1.0. Export your spreadsheet as CSV from Excel or Google Sheets.
 
 == Changelog ==
+
+= 1.6.0 =
+* Auto-queue import mode: CSV stored on server, 1,000 products per background run, automatically continues until file is complete
+* Import progress shows Run X of Y for large files; files over 2,000 rows default to auto-queue
 
 = 1.5.2 =
 * CSV import: fix duplicate product creation when the same SKU appears multiple times in one file (SKU is now cached after create; lookup always updates the oldest matching product)
