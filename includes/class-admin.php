@@ -404,8 +404,8 @@ class Boulk_UP_Admin {
 
 			<ul class="boulk-sku-rules">
 				<li><?php esc_html_e( 'Automann Part Number = SKU (product lookup).', 'boulk-update-products' ); ?></li>
-				<li><?php esc_html_e( 'Product exists → update Updated Price only (regular price).', 'boulk-update-products' ); ?></li>
-				<li><?php esc_html_e( 'Product not found → create with title (Description column), SKU, and Updated Price.', 'boulk-update-products' ); ?></li>
+				<li><?php esc_html_e( 'Product exists → update Updated Price column only.', 'boulk-update-products' ); ?></li>
+				<li><?php esc_html_e( 'Product not found → create a new product; choose which columns to apply below.', 'boulk-update-products' ); ?></li>
 			</ul>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data">
@@ -431,11 +431,32 @@ class Boulk_UP_Admin {
 					<tr>
 						<th scope="row"><?php esc_html_e( 'New products', 'boulk-update-products' ); ?></th>
 						<td>
-							<ul>
-								<li><label><input type="checkbox" checked="checked" disabled="disabled" /> <?php esc_html_e( 'Title (from Description column)', 'boulk-update-products' ); ?></label></li>
-								<li><label><input type="checkbox" checked="checked" disabled="disabled" /> <?php esc_html_e( 'SKU (Automann Part Number)', 'boulk-update-products' ); ?></label></li>
-								<li><label><input type="checkbox" checked="checked" disabled="disabled" /> <?php esc_html_e( 'Updated Price (regular price)', 'boulk-update-products' ); ?></label></li>
-							</ul>
+							<p class="description"><?php esc_html_e( 'SKU (Automann Part Number) is always set. Title and Updated Price are required for new products.', 'boulk-update-products' ); ?></p>
+							<div class="boulk-field-checkboxes boulk-pc-create-fields">
+								<?php
+								$pc_defaults = Boulk_UP_Update_Fields::get_price_create_create_defaults();
+								foreach ( Boulk_UP_Update_Fields::get_price_create_create_fields() as $field_key => $field_label ) :
+									$is_required = in_array( $field_key, array( 'title', 'regular_price' ), true );
+									$checked     = in_array( $field_key, $pc_defaults, true );
+									?>
+									<label class="boulk-field-label">
+										<input
+											type="checkbox"
+											name="boulk_pc_create_fields[]"
+											value="<?php echo esc_attr( $field_key ); ?>"
+											<?php checked( $checked ); ?>
+											<?php disabled( $is_required ); ?>
+										/>
+										<?php echo esc_html( $field_label ); ?>
+										<?php if ( $is_required ) : ?>
+											<span class="description"><?php esc_html_e( '(required)', 'boulk-update-products' ); ?></span>
+										<?php endif; ?>
+									</label>
+								<?php endforeach; ?>
+							</div>
+							<?php foreach ( array( 'title', 'regular_price' ) as $required_field ) : ?>
+								<input type="hidden" name="boulk_pc_create_fields[]" value="<?php echo esc_attr( $required_field ); ?>" />
+							<?php endforeach; ?>
 						</td>
 					</tr>
 					<tr>
@@ -637,7 +658,7 @@ class Boulk_UP_Admin {
 			array( 'column' => 'sku', 'aliases' => '—', 'description' => __( 'Required on every row. Matches WooCommerce products; creates new product if not found.', 'boulk-update-products' ) ),
 			array( 'column' => 'Automann Part Number', 'aliases' => '—', 'description' => __( 'Optional. Saved as product meta only (does not replace sku).', 'boulk-update-products' ) ),
 			array( 'column' => 'Description', 'aliases' => '—', 'description' => __( 'Product description (and product name when creating new products).', 'boulk-update-products' ) ),
-			array( 'column' => 'Updated Price', 'aliases' => '—', 'description' => __( 'Selling price (WooCommerce regular price).', 'boulk-update-products' ) ),
+			array( 'column' => 'Updated Price', 'aliases' => '—', 'description' => __( 'Product selling price from the Updated Price column.', 'boulk-update-products' ) ),
 			array( 'column' => 'Dist. Net Price', 'aliases' => '—', 'description' => __( 'Maps to WooCommerce sale price.', 'boulk-update-products' ) ),
 			array( 'column' => 'Dist. Price List', 'aliases' => '—', 'description' => __( 'Saved as product meta for reference.', 'boulk-update-products' ) ),
 			array( 'column' => 'Stock status', 'aliases' => '—', 'description' => __( 'instock, outofstock, or onbackorder.', 'boulk-update-products' ) ),
@@ -666,7 +687,8 @@ class Boulk_UP_Admin {
 				<p><strong><?php esc_html_e( 'Stored file:', 'boulk-update-products' ); ?></strong> <code><?php echo esc_html( $stored_file ); ?></code></p>
 			<?php endif; ?>
 			<?php if ( 'price_create' === $job->get( 'import_mode', 'full' ) ) : ?>
-				<p><strong><?php esc_html_e( 'Mode:', 'boulk-update-products' ); ?></strong> <?php esc_html_e( 'Price & Create (existing = price only; new = title + SKU + price)', 'boulk-update-products' ); ?></p>
+				<p><strong><?php esc_html_e( 'Mode:', 'boulk-update-products' ); ?></strong> <?php esc_html_e( 'Price & Create (existing = Updated Price only)', 'boulk-update-products' ); ?></p>
+				<p><strong><?php esc_html_e( 'New product fields:', 'boulk-update-products' ); ?></strong> <?php echo esc_html( Boulk_UP_Update_Fields::format_selection_label( $job->get( 'create_fields', array() ) ) ); ?></p>
 			<?php else : ?>
 				<p><strong><?php esc_html_e( 'Updating:', 'boulk-update-products' ); ?></strong> <?php echo esc_html( Boulk_UP_Update_Fields::format_selection_label( $job->get( 'update_fields', null ) ) ); ?></p>
 			<?php endif; ?>
@@ -937,6 +959,10 @@ class Boulk_UP_Admin {
 
 		$dry_run = ! empty( $_POST['boulk_dry_run'] );
 
+		$create_fields = isset( $_POST['boulk_pc_create_fields'] ) && is_array( $_POST['boulk_pc_create_fields'] )
+			? Boulk_UP_Update_Fields::sanitize_price_create_create_fields( array_map( 'sanitize_key', wp_unslash( $_POST['boulk_pc_create_fields'] ) ) )
+			: Boulk_UP_Update_Fields::get_price_create_create_defaults();
+
 		$job = Boulk_UP_Import_Job::create(
 			$file['tmp_name'],
 			$dry_run,
@@ -946,7 +972,7 @@ class Boulk_UP_Admin {
 			array(
 				'import_mode'   => 'price_create',
 				'csv_feed'      => 'automann_price',
-				'create_fields' => array( 'title', 'regular_price' ),
+				'create_fields' => $create_fields,
 			)
 		);
 

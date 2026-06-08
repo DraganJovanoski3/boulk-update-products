@@ -101,8 +101,9 @@ class Boulk_UP_CSV_Parser {
 		$aliases = self::$field_aliases;
 
 		if ( 'automann_price' === $feed ) {
-			$aliases['sku']   = array( 'automann_part_number', 'automann part number', 'sku' );
-			$aliases['title'] = array( 'description', 'title', 'name' );
+			$aliases['sku']           = array( 'automann_part_number', 'automann part number', 'sku' );
+			$aliases['title']         = array( 'description', 'title', 'name' );
+			$aliases['regular_price'] = array( 'updated_price', 'updated price' );
 			unset( $aliases['description'] );
 		}
 

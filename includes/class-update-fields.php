@@ -156,6 +156,75 @@ class Boulk_UP_Update_Fields {
 	}
 
 	/**
+	 * Optional fields when creating new products (Price & Create tab).
+	 *
+	 * @return array<string, string>
+	 */
+	public static function get_price_create_create_fields() {
+		return apply_filters(
+			'boulk_up_price_create_create_fields',
+			array(
+				'title'              => __( 'Title (Description column)', 'boulk-update-products' ),
+				'regular_price'      => __( 'Updated Price', 'boulk-update-products' ),
+				'sale_price'         => __( 'Dist. Net Price (sale price)', 'boulk-update-products' ),
+				'stock_status'       => __( 'Stock status', 'boulk-update-products' ),
+				'dist_price_list'    => __( 'Dist. Price List (meta)', 'boulk-update-products' ),
+				'weight'             => __( 'Weight', 'boulk-update-products' ),
+				'width'              => __( 'Width', 'boulk-update-products' ),
+				'length'             => __( 'Length', 'boulk-update-products' ),
+				'height'             => __( 'Height', 'boulk-update-products' ),
+				'units'              => __( 'Units (meta)', 'boulk-update-products' ),
+				'pkg_qty'            => __( 'Pkg/Qty (meta)', 'boulk-update-products' ),
+				'categories'         => __( 'Master Category', 'boulk-update-products' ),
+				'brands'             => __( 'Brands', 'boulk-update-products' ),
+				'product_group_id'   => __( 'Product group ID (meta)', 'boulk-update-products' ),
+				'product_group_desc' => __( 'Product group description (meta)', 'boulk-update-products' ),
+			)
+		);
+	}
+
+	/**
+	 * Default checked fields for new products on Price & Create tab.
+	 *
+	 * @return string[]
+	 */
+	public static function get_price_create_create_defaults() {
+		return array( 'title', 'regular_price', 'stock_status' );
+	}
+
+	/**
+	 * Sanitize Price & Create “new product” field selection (title + price always kept).
+	 *
+	 * @param string[] $selected Raw field keys from POST.
+	 * @return string[]
+	 */
+	public static function sanitize_price_create_create_fields( $selected ) {
+		if ( ! is_array( $selected ) ) {
+			$selected = array();
+		}
+
+		$allowed = array_keys( self::get_price_create_create_fields() );
+		$clean   = array();
+
+		foreach ( $selected as $field ) {
+			$field = sanitize_key( $field );
+			if ( in_array( $field, $allowed, true ) ) {
+				$clean[] = $field;
+			}
+		}
+
+		$clean = array_values( array_unique( $clean ) );
+
+		foreach ( array( 'title', 'regular_price' ) as $required ) {
+			if ( ! in_array( $required, $clean, true ) ) {
+				$clean[] = $required;
+			}
+		}
+
+		return $clean;
+	}
+
+	/**
 	 * Sanitize submitted field selection.
 	 *
 	 * @param string[] $selected Raw field keys from POST.
