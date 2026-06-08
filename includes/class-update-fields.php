@@ -258,15 +258,21 @@ class Boulk_UP_Update_Fields {
 	}
 
 	/**
-	 * Resolve WooCommerce SKU from the sku column only.
+	 * Resolve WooCommerce SKU from the sku column (and feed-specific fallbacks).
 	 *
-	 * @param array<string, string> $row Row data.
+	 * @param array<string, string> $row  Row data.
+	 * @param string                $feed CSV feed profile.
 	 * @return string
 	 */
-	public static function resolve_sku( $row ) {
-		if ( ! isset( $row['sku'] ) ) {
-			return '';
+	public static function resolve_sku( $row, $feed = 'default' ) {
+		if ( isset( $row['sku'] ) && '' !== trim( (string) $row['sku'] ) ) {
+			return trim( (string) $row['sku'] );
 		}
-		return trim( (string) $row['sku'] );
+
+		if ( 'automann_price' === $feed && ! empty( $row['automann_part_number'] ) ) {
+			return trim( (string) $row['automann_part_number'] );
+		}
+
+		return '';
 	}
 }

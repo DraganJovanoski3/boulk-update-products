@@ -57,15 +57,23 @@ class Boulk_UP_Import_Job {
 	 * @param string   $profile       Import performance profile.
 	 * @param string[] $update_fields  Fields to update (empty = all).
 	 * @param bool     $create_missing Create products when SKU not found.
+	 * @param array<string, mixed> $options import_mode, csv_feed, create_fields.
 	 * @return Boulk_UP_Import_Job|WP_Error
 	 */
-	public static function create( $source_file, $dry_run = false, $profile = '', $update_fields = array(), $create_missing = false ) {
+	public static function create( $source_file, $dry_run = false, $profile = '', $update_fields = array(), $create_missing = false, $options = array() ) {
 		self::ensure_upload_dir();
+
+		$options       = is_array( $options ) ? $options : array();
+		$import_mode   = isset( $options['import_mode'] ) ? sanitize_key( $options['import_mode'] ) : 'full';
+		$csv_feed      = isset( $options['csv_feed'] ) ? sanitize_key( $options['csv_feed'] ) : 'default';
+		$create_fields = isset( $options['create_fields'] ) && is_array( $options['create_fields'] )
+			? Boulk_UP_Update_Fields::sanitize_selection( $options['create_fields'] )
+			: array();
 
 		$id = 'job_' . wp_generate_password( 12, false, false );
 
 		$parser = new Boulk_UP_CSV_Parser( $source_file );
-		$result = $parser->initialize();
+		$result = $parser->initialize( $csv_feed );
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
@@ -88,6 +96,10 @@ class Boulk_UP_Import_Job {
 		$total_rows = $parser->get_total_rows();
 		$profile    = Boulk_UP_Import_Config::auto_profile( $total_rows, $profile );
 
+		if ( 'price_create' === $import_mode && $total_rows > 500 ) {
+			$profile = Boulk_UP_Import_Config::PROFILE_AUTO_QUEUE;
+		}
+
 		$job = new self(
 			$id,
 			array(
@@ -95,6 +107,9 @@ class Boulk_UP_Import_Job {
 				'status'         => self::STATUS_QUEUED,
 				'dry_run'        => (bool) $dry_run,
 				'profile'        => $profile,
+				'import_mode'    => $import_mode,
+				'csv_feed'       => $csv_feed,
+				'create_fields'  => $create_fields,
 				'update_fields'  => $update_fields,
 				'create_missing' => (bool) $create_missing,
 				'file_path'      => $dest,

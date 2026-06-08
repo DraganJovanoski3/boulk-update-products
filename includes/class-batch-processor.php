@@ -240,13 +240,15 @@ class Boulk_UP_Batch_Processor {
 	private function process_until_time_limit( $job, $file_path ) {
 		$parser = new Boulk_UP_CSV_Parser( $file_path );
 
-		$column_map = $job->get( 'csv_column_map', array() );
-		$delimiter  = $job->get( 'csv_delimiter', ',' );
+		$column_map  = $job->get( 'csv_column_map', array() );
+		$delimiter   = $job->get( 'csv_delimiter', ',' );
+		$csv_feed    = $job->get( 'csv_feed', 'default' );
+		$import_mode = $job->get( 'import_mode', 'full' );
 
 		if ( ! empty( $column_map ) && is_array( $column_map ) ) {
 			$parser->load_state( $column_map, $delimiter, (int) $job->get( 'total_rows', 0 ) );
 		} else {
-			$init = $parser->initialize();
+			$init = $parser->initialize( $csv_feed );
 			if ( is_wp_error( $init ) ) {
 				$job->mark_failed( $init->get_error_message() );
 				return true;
@@ -261,7 +263,8 @@ class Boulk_UP_Batch_Processor {
 		$started       = time();
 		$rows_this_tick = 0;
 		$update_fields = $job->get( 'update_fields', null );
-		$updater = new Boulk_UP_Product_Updater( $update_fields );
+		$create_fields = $job->get( 'create_fields', array() );
+		$updater       = new Boulk_UP_Product_Updater( $update_fields, $import_mode, $create_fields, $csv_feed );
 		$dry_run        = (bool) $job->get( 'dry_run', false );
 		$total          = (int) $job->get( 'total_rows', 0 );
 		$file_offset    = (int) $job->get( 'file_offset', 0 );
@@ -293,7 +296,7 @@ class Boulk_UP_Batch_Processor {
 
 			foreach ( $rows as $data_index => $row ) {
 				$row_number = $data_index + 2;
-				$sku        = Boulk_UP_Update_Fields::resolve_sku( $row );
+				$sku        = Boulk_UP_Update_Fields::resolve_sku( $row, $csv_feed );
 
 				$result = $updater->process_row( $row, $row_number, $dry_run );
 

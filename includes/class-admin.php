@@ -43,6 +43,7 @@ class Boulk_UP_Admin {
 		add_action( 'admin_menu', array( $this, 'register_menu' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'admin_post_boulk_up_start_import', array( $this, 'handle_start_import' ) );
+		add_action( 'admin_post_boulk_up_start_price_create', array( $this, 'handle_start_price_create' ) );
 		add_action( 'admin_post_boulk_up_cancel_job', array( $this, 'handle_cancel_job' ) );
 		add_action( 'admin_post_boulk_up_download_sample', array( $this, 'handle_download_sample' ) );
 		add_action( 'admin_post_boulk_up_download_automann_sample', array( $this, 'handle_download_automann_sample' ) );
@@ -205,6 +206,9 @@ class Boulk_UP_Admin {
 				<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::MENU_SLUG . '&tab=import' ) ); ?>" class="nav-tab <?php echo 'import' === $tab ? 'nav-tab-active' : ''; ?>">
 					<?php esc_html_e( 'New Import', 'boulk-update-products' ); ?>
 				</a>
+				<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::MENU_SLUG . '&tab=price-create' ) ); ?>" class="nav-tab <?php echo 'price-create' === $tab ? 'nav-tab-active' : ''; ?>">
+					<?php esc_html_e( 'Price & Create', 'boulk-update-products' ); ?>
+				</a>
 				<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::MENU_SLUG . '&tab=history' ) ); ?>" class="nav-tab <?php echo 'history' === $tab ? 'nav-tab-active' : ''; ?>">
 					<?php esc_html_e( 'Import History', 'boulk-update-products' ); ?>
 				</a>
@@ -221,6 +225,9 @@ class Boulk_UP_Admin {
 				switch ( $tab ) {
 					case 'history':
 						$this->render_history_tab( $job );
+						break;
+					case 'price-create':
+						$this->render_price_create_tab( $job );
 						break;
 					case 'products':
 						$this->render_products_tab();
@@ -382,6 +389,83 @@ class Boulk_UP_Admin {
 	}
 
 	/**
+	 * Price & Create tab (Automann / Irfan feed).
+	 *
+	 * @param Boulk_UP_Import_Job|null $active_job Active job for progress.
+	 */
+	private function render_price_create_tab( $active_job = null ) {
+		$max_size = Boulk_UP_Import_Config::get_max_upload_size();
+		?>
+		<div class="boulk-up-panel">
+			<h2><?php esc_html_e( 'Price & Create', 'boulk-update-products' ); ?></h2>
+			<p class="description">
+				<?php esc_html_e( 'Upload your Automann-style spreadsheet export. Large files (20k–57k+ rows) run automatically in batches of 1,000 — the CSV stays on the server until finished.', 'boulk-update-products' ); ?>
+			</p>
+
+			<ul class="boulk-sku-rules">
+				<li><?php esc_html_e( 'Automann Part Number = SKU (product lookup).', 'boulk-update-products' ); ?></li>
+				<li><?php esc_html_e( 'Product exists → update Updated Price only (regular price).', 'boulk-update-products' ); ?></li>
+				<li><?php esc_html_e( 'Product not found → create with title (Description column), SKU, and Updated Price.', 'boulk-update-products' ); ?></li>
+			</ul>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data">
+				<?php wp_nonce_field( 'boulk_up_start_price_create' ); ?>
+				<input type="hidden" name="action" value="boulk_up_start_price_create" />
+
+				<table class="form-table">
+					<tr>
+						<th scope="row"><label for="boulk_pc_csv_file"><?php esc_html_e( 'CSV file', 'boulk-update-products' ); ?></label></th>
+						<td>
+							<input type="file" name="boulk_csv_file" id="boulk_pc_csv_file" accept=".csv,text/csv" required />
+							<p class="description">
+								<?php
+								printf(
+									/* translators: %s: max file size */
+									esc_html__( 'Expected columns: Automann Part Number, Description, Updated Price. Max size: %s.', 'boulk-update-products' ),
+									esc_html( size_format( $max_size ) )
+								);
+								?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'New products', 'boulk-update-products' ); ?></th>
+						<td>
+							<ul>
+								<li><label><input type="checkbox" checked="checked" disabled="disabled" /> <?php esc_html_e( 'Title (from Description column)', 'boulk-update-products' ); ?></label></li>
+								<li><label><input type="checkbox" checked="checked" disabled="disabled" /> <?php esc_html_e( 'SKU (Automann Part Number)', 'boulk-update-products' ); ?></label></li>
+								<li><label><input type="checkbox" checked="checked" disabled="disabled" /> <?php esc_html_e( 'Updated Price (regular price)', 'boulk-update-products' ); ?></label></li>
+							</ul>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Existing products', 'boulk-update-products' ); ?></th>
+						<td>
+							<label><input type="checkbox" checked="checked" disabled="disabled" /> <?php esc_html_e( 'Updated Price only', 'boulk-update-products' ); ?></label>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Dry Run', 'boulk-update-products' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="boulk_dry_run" value="1" />
+								<?php esc_html_e( 'Validate only — do not write changes to the database', 'boulk-update-products' ); ?>
+							</label>
+						</td>
+					</tr>
+				</table>
+
+				<?php submit_button( __( 'Start Price & Create Import', 'boulk-update-products' ) ); ?>
+			</form>
+		</div>
+
+		<?php if ( $active_job && ! $active_job->is_finished() ) : ?>
+			<?php $this->render_job_progress( $active_job ); ?>
+		<?php endif; ?>
+		<?php
+	}
+
+	/**
 	 * Render import history tab.
 	 *
 	 * @param Boulk_UP_Import_Job|null $selected_job Selected job for detail view.
@@ -417,6 +501,9 @@ class Boulk_UP_Admin {
 									<span class="boulk-status boulk-status-<?php echo esc_attr( $job->get( 'status' ) ); ?>">
 										<?php echo esc_html( $this->status_label( $job->get( 'status' ) ) ); ?>
 									</span>
+									<?php if ( 'price_create' === $job->get( 'import_mode', 'full' ) ) : ?>
+										<span class="boulk-badge boulk-badge-price-create"><?php esc_html_e( 'Price & Create', 'boulk-update-products' ); ?></span>
+									<?php endif; ?>
 									<?php if ( $job->get( 'dry_run' ) ) : ?>
 										<span class="boulk-badge"><?php esc_html_e( 'Dry run', 'boulk-update-products' ); ?></span>
 									<?php endif; ?>
@@ -578,7 +665,11 @@ class Boulk_UP_Admin {
 			<?php if ( $stored_file ) : ?>
 				<p><strong><?php esc_html_e( 'Stored file:', 'boulk-update-products' ); ?></strong> <code><?php echo esc_html( $stored_file ); ?></code></p>
 			<?php endif; ?>
-			<p><strong><?php esc_html_e( 'Updating:', 'boulk-update-products' ); ?></strong> <?php echo esc_html( Boulk_UP_Update_Fields::format_selection_label( $job->get( 'update_fields', null ) ) ); ?></p>
+			<?php if ( 'price_create' === $job->get( 'import_mode', 'full' ) ) : ?>
+				<p><strong><?php esc_html_e( 'Mode:', 'boulk-update-products' ); ?></strong> <?php esc_html_e( 'Price & Create (existing = price only; new = title + SKU + price)', 'boulk-update-products' ); ?></p>
+			<?php else : ?>
+				<p><strong><?php esc_html_e( 'Updating:', 'boulk-update-products' ); ?></strong> <?php echo esc_html( Boulk_UP_Update_Fields::format_selection_label( $job->get( 'update_fields', null ) ) ); ?></p>
+			<?php endif; ?>
 
 			<div class="boulk-progress-bar boulk-progress-large" data-percent="<?php echo esc_attr( $job->get_progress_percent() ); ?>">
 				<div class="boulk-progress-fill" style="width:<?php echo esc_attr( $job->get_progress_percent() ); ?>%"></div>
@@ -830,6 +921,84 @@ class Boulk_UP_Admin {
 	}
 
 	/**
+	 * Handle Price & Create import start.
+	 */
+	public function handle_start_price_create() {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'Permission denied.', 'boulk-update-products' ) );
+		}
+
+		check_admin_referer( 'boulk_up_start_price_create' );
+
+		$file = $this->validate_csv_upload();
+		if ( is_wp_error( $file ) ) {
+			$this->redirect_with_notice( 'error', $file->get_error_message(), 'price-create' );
+		}
+
+		$dry_run = ! empty( $_POST['boulk_dry_run'] );
+
+		$job = Boulk_UP_Import_Job::create(
+			$file['tmp_name'],
+			$dry_run,
+			Boulk_UP_Import_Config::PROFILE_AUTO_QUEUE,
+			array( 'regular_price' ),
+			true,
+			array(
+				'import_mode'   => 'price_create',
+				'csv_feed'      => 'automann_price',
+				'create_fields' => array( 'title', 'regular_price' ),
+			)
+		);
+
+		if ( is_wp_error( $job ) ) {
+			$this->redirect_with_notice( 'error', $job->get_error_message(), 'price-create' );
+		}
+
+		Boulk_UP_Batch_Processor::instance()->schedule_job( $job->get_id() );
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'          => self::MENU_SLUG,
+					'tab'           => 'price-create',
+					'job_id'        => $job->get_id(),
+					'boulk_notice'  => 'success',
+					'boulk_message' => $dry_run
+						? __( 'Dry run started. No changes will be saved.', 'boulk-update-products' )
+						: __( 'Price & Create import started. Large files continue automatically in the background (1,000 rows per run).', 'boulk-update-products' ),
+				),
+				admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Validate uploaded CSV from $_FILES.
+	 *
+	 * @return array<string, mixed>|WP_Error File array from $_FILES on success.
+	 */
+	private function validate_csv_upload() {
+		if ( empty( $_FILES['boulk_csv_file']['tmp_name'] ) ) {
+			return new WP_Error( 'boulk_no_file', __( 'Please select a CSV file.', 'boulk-update-products' ) );
+		}
+
+		$file = $_FILES['boulk_csv_file'];
+		$max  = Boulk_UP_Import_Config::get_max_upload_size();
+
+		if ( $file['size'] > $max ) {
+			return new WP_Error( 'boulk_file_size', __( 'File exceeds maximum upload size.', 'boulk-update-products' ) );
+		}
+
+		$ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+		if ( 'csv' !== $ext ) {
+			return new WP_Error( 'boulk_file_type', __( 'Only CSV files are allowed.', 'boulk-update-products' ) );
+		}
+
+		return $file;
+	}
+
+	/**
 	 * Handle import start.
 	 */
 	public function handle_start_import() {
@@ -839,20 +1008,9 @@ class Boulk_UP_Admin {
 
 		check_admin_referer( 'boulk_up_start_import' );
 
-		if ( empty( $_FILES['boulk_csv_file']['tmp_name'] ) ) {
-			$this->redirect_with_notice( 'error', __( 'Please select a CSV file.', 'boulk-update-products' ) );
-		}
-
-		$file = $_FILES['boulk_csv_file'];
-		$max  = Boulk_UP_Import_Config::get_max_upload_size();
-
-		if ( $file['size'] > $max ) {
-			$this->redirect_with_notice( 'error', __( 'File exceeds maximum upload size.', 'boulk-update-products' ) );
-		}
-
-		$ext = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
-		if ( 'csv' !== $ext ) {
-			$this->redirect_with_notice( 'error', __( 'Only CSV files are allowed.', 'boulk-update-products' ) );
+		$file = $this->validate_csv_upload();
+		if ( is_wp_error( $file ) ) {
+			$this->redirect_with_notice( 'error', $file->get_error_message() );
 		}
 
 		$dry_run = ! empty( $_POST['boulk_dry_run'] );

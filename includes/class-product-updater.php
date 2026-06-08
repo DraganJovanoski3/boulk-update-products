@@ -27,6 +27,34 @@ class Boulk_UP_Product_Updater {
 	private $enabled_fields;
 
 	/**
+	 * Fields applied for the current row (price_create mode).
+	 *
+	 * @var string[]|null
+	 */
+	private $active_fields;
+
+	/**
+	 * Import mode: full|price_create.
+	 *
+	 * @var string
+	 */
+	private $import_mode = 'full';
+
+	/**
+	 * CSV feed profile.
+	 *
+	 * @var string
+	 */
+	private $csv_feed = 'default';
+
+	/**
+	 * Fields to apply when creating products (price_create mode).
+	 *
+	 * @var string[]
+	 */
+	private $create_fields = array();
+
+	/**
 	 * SKU => product ID cache for this batch.
 	 *
 	 * @var array<string, int>
@@ -37,9 +65,16 @@ class Boulk_UP_Product_Updater {
 	 * Constructor.
 	 *
 	 * @param string[]|null $enabled_fields Fields to update; null = all.
+	 * @param string        $import_mode    full|price_create.
+	 * @param string[]      $create_fields  Fields for new products in price_create mode.
+	 * @param string        $csv_feed       CSV feed profile.
 	 */
-	public function __construct( $enabled_fields = null ) {
+	public function __construct( $enabled_fields = null, $import_mode = 'full', $create_fields = array(), $csv_feed = 'default' ) {
 		$this->enabled_fields = $enabled_fields;
+		$this->import_mode    = $import_mode;
+		$this->create_fields  = is_array( $create_fields ) ? $create_fields : array();
+		$this->csv_feed       = $csv_feed;
+		$this->active_fields  = $enabled_fields;
 		$this->yoast          = $this->needs_yoast() ? new Boulk_UP_Yoast_Updater( $enabled_fields ) : null;
 	}
 
@@ -49,6 +84,9 @@ class Boulk_UP_Product_Updater {
 	 * @return bool
 	 */
 	private function needs_yoast() {
+		if ( 'price_create' === $this->import_mode ) {
+			return false;
+		}
 		if ( null === $this->enabled_fields ) {
 			return true;
 		}
@@ -119,7 +157,7 @@ class Boulk_UP_Product_Updater {
 	 * @return array{status: string, message: string, product_id?: int}
 	 */
 	public function process_row( $row, $row_number, $dry_run = false ) {
-		$sku = Boulk_UP_Update_Fields::resolve_sku( $row );
+		$sku = Boulk_UP_Update_Fields::resolve_sku( $row, $this->csv_feed );
 
 		if ( '' === $sku ) {
 			return array(
@@ -128,8 +166,6 @@ class Boulk_UP_Product_Updater {
 			);
 		}
 
-		$row['sku'] = $sku;
-		$row        = Boulk_UP_Update_Fields::filter_row( $row, $this->enabled_fields );
 		$row['sku'] = $sku;
 
 		$product_id = $this->get_product_id_by_sku( $sku );
@@ -155,6 +191,15 @@ class Boulk_UP_Product_Updater {
 			$this->remember_sku( $sku, $product_id );
 			$is_new     = true;
 		}
+
+		if ( 'price_create' === $this->import_mode ) {
+			$this->active_fields = $is_new ? $this->create_fields : array( 'regular_price' );
+		} else {
+			$this->active_fields = $this->enabled_fields;
+		}
+
+		$row        = Boulk_UP_Update_Fields::filter_row( $row, $this->active_fields );
+		$row['sku'] = $sku;
 
 		if ( $dry_run && ! $is_new ) {
 			return array(
@@ -272,7 +317,8 @@ class Boulk_UP_Product_Updater {
 	 * @return bool
 	 */
 	private function is_enabled( $field ) {
-		return Boulk_UP_Update_Fields::is_enabled( $field, $this->enabled_fields );
+		$fields = null !== $this->active_fields ? $this->active_fields : $this->enabled_fields;
+		return Boulk_UP_Update_Fields::is_enabled( $field, $fields );
 	}
 
 	/**

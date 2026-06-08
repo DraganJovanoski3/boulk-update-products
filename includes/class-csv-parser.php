@@ -76,6 +76,13 @@ class Boulk_UP_CSV_Parser {
 	private $total_rows = 0;
 
 	/**
+	 * Column mapping feed profile.
+	 *
+	 * @var string
+	 */
+	private $feed = 'default';
+
+	/**
 	 * Constructor.
 	 *
 	 * @param string $file_path Absolute path to CSV file.
@@ -85,11 +92,34 @@ class Boulk_UP_CSV_Parser {
 	}
 
 	/**
+	 * Field aliases for a feed profile.
+	 *
+	 * @param string $feed Feed key (default|automann_price).
+	 * @return array<string, string[]>
+	 */
+	public static function get_field_aliases( $feed = 'default' ) {
+		$aliases = self::$field_aliases;
+
+		if ( 'automann_price' === $feed ) {
+			$aliases['sku']   = array( 'automann_part_number', 'automann part number', 'sku' );
+			$aliases['title'] = array( 'description', 'title', 'name' );
+			unset( $aliases['description'] );
+		}
+
+		return apply_filters( 'boulk_up_field_aliases', $aliases, $feed );
+	}
+
+	/**
 	 * Parse headers and count rows.
 	 *
+	 * @param string $feed Column mapping feed (default|automann_price).
 	 * @return true|WP_Error
 	 */
-	public function initialize() {
+	public function initialize( $feed = 'default' ) {
+		$this->feed = sanitize_key( $feed );
+		if ( ! in_array( $this->feed, array( 'default', 'automann_price' ), true ) ) {
+			$this->feed = 'default';
+		}
 		if ( ! is_readable( $this->file_path ) ) {
 			return new WP_Error( 'boulk_csv_unreadable', __( 'CSV file is not readable.', 'boulk-update-products' ) );
 		}
@@ -118,10 +148,10 @@ class Boulk_UP_CSV_Parser {
 		$this->column_map = $this->build_column_map( $headers );
 
 		if ( ! isset( $this->column_map['sku'] ) ) {
-			return new WP_Error(
-				'boulk_csv_missing_sku',
-				__( 'CSV must include a "sku" column.', 'boulk-update-products' )
-			);
+			$message = 'automann_price' === $this->feed
+				? __( 'CSV must include an "Automann Part Number" or "sku" column.', 'boulk-update-products' )
+				: __( 'CSV must include a "sku" column.', 'boulk-update-products' );
+			return new WP_Error( 'boulk_csv_missing_sku', $message );
 		}
 
 		$this->total_rows = $this->count_data_rows();
@@ -309,7 +339,9 @@ class Boulk_UP_CSV_Parser {
 			$normalized_hdr[ $index ] = self::normalize_header( (string) $header );
 		}
 
-		foreach ( self::$field_aliases as $field => $aliases ) {
+		$field_aliases = self::get_field_aliases( $this->feed );
+
+		foreach ( $field_aliases as $field => $aliases ) {
 			foreach ( $normalized_hdr as $index => $norm ) {
 				if ( in_array( $norm, $aliases, true ) ) {
 					$map[ $field ] = $index;

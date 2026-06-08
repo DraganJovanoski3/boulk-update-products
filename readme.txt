@@ -4,7 +4,7 @@ Tags: woocommerce, yoast, bulk, csv, import, seo
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.6.0
+Stable tag: 1.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,6 +27,7 @@ Boulk Bulk Product Update lets store managers update thousands of WooCommerce pr
 * Background batched processing with import size profiles (10k+ rows per run) via Action Scheduler
 * Import history with progress tracking and downloadable error logs
 * **Product Manager** tab: fast AJAX product table, search, bulk price/stock updates, bulk trash, and background jobs for large selections
+* **Price & Create** tab: Automann/Irfan feed — update existing products by price only; create new products with title, SKU, and price (57k+ rows via auto-queue)
 
 == Installation ==
 
@@ -94,6 +95,11 @@ Yes. Include only `sku` and `updated_price` (and/or `sale_price`) columns. Empty
 CSV only in v1.0. Export your spreadsheet as CSV from Excel or Google Sheets.
 
 == Changelog ==
+
+= 1.7.0 =
+* Price & Create tab for Automann-style CSVs: Automann Part Number = SKU, Description = product title, Updated Price = regular price
+* Existing products: price update only; missing SKUs: create simple product with title + SKU + price
+* Large files use auto-queue (1,000 rows per background run)
 
 = 1.6.0 =
 * Auto-queue import mode: CSV stored on server, 1,000 products per background run, automatically continues until file is complete
